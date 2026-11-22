@@ -1,0 +1,1695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="An interactive PCR simulator for students: build the reaction, run the thermocycler, read the gel, and test yourself.">
+<meta name="color-scheme" content="light dark">
+<style>
+  /* Baseline the page assumes: the artifact host supplied these, so a standalone
+     build must too. [hidden] needs !important because panels carry display rules. */
+  :root{color-scheme:light;
+    padding-top:env(safe-area-inset-top,0px);
+    padding-bottom:env(safe-area-inset-bottom,0px)}
+  body{margin:0;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px}
+  img{max-width:100%}
+  [hidden]{display:none!important}
+</style>
+<title>PCR Bench</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Shell: persistent instrument rail + tabbed workspace; rail becomes a top strip under 860px. */
+:root{
+  --bg:#FBFAF7; --surface:#FFFFFF; --surface-2:#F2EFE9; --line:#E3DED4; --line-soft:#EDE9E1;
+  --ink:#1A1A18; --ink-2:#5C564E; --ink-3:#847D72;
+  --accent:#1F5FA8; --accent-ink:#17497F; --accent-soft:#EAF1F9;
+  --good:#2E7D4F; --good-soft:#E9F3EC;
+  --warn:#9A5B00; --warn-soft:#FBF1E2;
+  --bad:#B3261E; --bad-soft:#FBECEA;
+  --display:'Archivo',ui-sans-serif,system-ui,sans-serif;
+  --body:'Inter',ui-sans-serif,system-ui,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --on-accent:#FFFFFF;
+  --r:11px; --shadow:0 1px 2px rgba(26,26,24,.05),0 6px 16px -12px rgba(26,26,24,.3);
+  color-scheme:light;
+}
+:root[data-theme="dark"]{
+  --on-accent:#15171A;
+  --bg:#15171A; --surface:#1D2024; --surface-2:#262A2F; --line:#32373D; --line-soft:#2A2E34;
+  --ink:#ECEAE5; --ink-2:#ACA79E; --ink-3:#8A857C;
+  --accent:#7FB3E8; --accent-ink:#A9CCF2; --accent-soft:#17263A;
+  --good:#5FC98C; --good-soft:#132A1E;
+  --warn:#E3A944; --warn-soft:#2C2415;
+  --bad:#E4685D; --bad-soft:#2C1917;
+  --shadow:0 1px 2px rgba(0,0,0,.45),0 8px 20px -14px rgba(0,0,0,.9);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.012em}
+p{margin:0}
+button{font:inherit;color:inherit}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:5px}
+.gut{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* ---------- header ---------- */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:14;background:var(--surface)}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:13;background:var(--surface);border-bottom:1px solid var(--line)}
+.bar{display:flex;align-items:center;gap:14px;padding-block:10px;flex-wrap:wrap;max-width:1500px;margin:0 auto}
+.logo{display:flex;align-items:center;gap:9px}
+.logo .mark{width:27px;height:27px;border-radius:8px;background:var(--accent);display:grid;place-items:center;
+  color:var(--on-accent);font-family:var(--mono);font-size:10px;font-weight:600;flex:none}
+.logo b{font-family:var(--display);font-weight:700;font-size:16.5px}
+.logo span{font-size:12.5px;color:var(--ink-3)}
+@media (max-width:620px){.logo span{display:none}}
+.tabs{display:flex;gap:2px;background:var(--surface-2);padding:3px;border-radius:10px;margin-left:auto}
+.tabs button{border:0;background:none;padding:7px 14px;border-radius:8px;font-size:13.5px;font-weight:500;
+  color:var(--ink-2);cursor:pointer;white-space:nowrap}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-weight:600}
+.tabs button:hover{color:var(--ink)}
+.themebtn{width:36px;height:36px;border:1px solid var(--line);background:var(--surface);border-radius:9px;
+  display:grid;place-items:center;cursor:pointer;color:var(--ink-2);flex:none}
+.themebtn:hover{border-color:var(--ink-3);color:var(--ink)}
+.themebtn svg{width:17px;height:17px;display:block}
+
+/* ---------- guided lesson (Learn) ---------- */
+.lsteps{display:flex;align-items:flex-start;gap:0;margin-bottom:18px;overflow-x:auto;padding-bottom:4px;
+  scrollbar-width:none}
+.lsteps::-webkit-scrollbar{display:none}
+.lstep{display:flex;align-items:center;gap:9px;border:0;background:none;cursor:pointer;padding:4px 0;flex:none}
+.lstep .dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);background:var(--surface);
+  display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink-3);flex:none}
+.lstep .lb{font-size:13px;font-weight:500;color:var(--ink-3);white-space:nowrap}
+.lstep.done .dot{border-color:var(--good);background:var(--good);color:var(--on-accent)}
+.lstep.done .lb{color:var(--ink-2)}
+.lstep.on .dot{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.lstep.on .lb{color:var(--ink);font-weight:600}
+.lsep{flex:1 0 28px;height:2px;background:var(--line);margin:13px 10px 0;border-radius:1px}
+.lsep.done{background:var(--good)}
+.lesson{display:grid;grid-template-columns:244px minmax(0,1fr) 284px;gap:16px;align-items:start}
+@media (max-width:1240px){.lesson{grid-template-columns:230px minmax(0,1fr)}
+  .lsupport{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(256px,1fr));gap:16px;align-content:start}}
+@media (max-width:860px){.lesson{grid-template-columns:minmax(0,1fr)}.lproto{order:2}}
+.lsupport{display:flex;flex-direction:column;gap:16px}
+.prow{display:flex;gap:10px;align-items:flex-start;padding:8px 9px;border-radius:8px}
+.prow.on{background:var(--accent-soft)}
+.prow b{width:17px;height:17px;border-radius:50%;border:1.5px solid var(--line);flex:none;margin-top:1px;
+  display:grid;place-items:center;font-size:9px;color:transparent;background:var(--surface)}
+.prow.done b{border-color:var(--good);background:var(--good);color:var(--on-accent)}
+.prow.on b{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.prow .pn{font-size:12.5px;line-height:1.35;color:var(--ink-3)}
+.prow.done .pn{color:var(--ink-2)}
+.prow.on .pn{color:var(--accent-ink);font-weight:600}
+.prow .ps{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:2px;display:block}
+.lhead{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.lhead h2{font-size:22px}
+.lhead .lede{color:var(--ink-2);font-size:14px;margin-top:6px;max-width:58ch}
+.lchips{display:flex;gap:7px;margin-left:auto;flex-wrap:wrap}
+.lchip{background:var(--accent-soft);color:var(--accent-ink);border-radius:999px;padding:5px 12px;
+  font-size:12.5px;font-weight:600;white-space:nowrap}
+.diabox{margin-top:16px;background:var(--bg);border:1px solid var(--line-soft);border-radius:10px;padding:14px}
+.dia{display:block;width:100%;height:auto}
+.dia text{font-family:var(--body);fill:var(--ink-2)}
+.dia text.m{font-family:var(--mono)}
+.lbody{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:15px}
+.lbody p{font-size:14px;line-height:1.68;color:var(--ink)}
+.lbody p+p{margin-top:11px}
+.lbody b{font-weight:600}
+.lnav{display:flex;gap:9px;margin-top:20px;flex-wrap:wrap;align-items:center}
+.lnav .count{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--ink-3)}
+.scard{border-top-width:3px;border-top-style:solid}
+.scard.why{border-top-color:var(--accent)}
+.scard.check{border-top-color:var(--good)}
+.scard.watch{border-top-color:var(--warn)}
+.scard h4{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:500;margin-bottom:9px}
+.scard p{font-size:13px;line-height:1.6;color:var(--ink)}
+.copts{display:flex;flex-direction:column;gap:7px;margin-top:12px}
+.copt{display:flex;gap:9px;align-items:center;text-align:left;width:100%;border:1px solid var(--line);
+  background:var(--surface);border-radius:8px;padding:9px 11px;font-size:13px;cursor:pointer}
+.copt:hover:not([disabled]){border-color:var(--accent)}
+.copt i{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line);flex:none}
+.copt.correct{border-color:var(--good);background:var(--good-soft)}
+.copt.correct i{border-color:var(--good);background:var(--good)}
+.copt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.copt.wrong i{border-color:var(--bad);background:var(--bad)}
+.copt[disabled]{cursor:default}
+.cfb{margin-top:11px;font-size:12.5px;line-height:1.55;padding:10px 12px;border-radius:8px}
+.cfb.ok{background:var(--good-soft);color:var(--good)}
+.cfb.no{background:var(--bad-soft);color:var(--bad)}
+.wlist{display:flex;flex-direction:column;gap:11px}
+.witem{display:flex;gap:9px;align-items:flex-start}
+.witem i{width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none;margin-top:6px}
+.witem b{display:block;font-size:13px;font-weight:600;margin-bottom:2px}
+.witem span{font-size:12.5px;color:var(--ink-2);line-height:1.5}
+
+/* ---------- shell + rail ---------- */
+.shell{display:grid;grid-template-columns:218px minmax(0,1fr);max-width:1500px;margin:0 auto;align-items:start}
+@media (max-width:860px){.shell{grid-template-columns:minmax(0,1fr)}}
+.rail{border-right:1px solid var(--line);background:var(--surface);padding:18px 14px 26px;
+  position:sticky;top:calc(env(safe-area-inset-top,0px) + 50px);align-self:stretch}
+@media (max-width:860px){.rail{position:static;border-right:0;border-bottom:1px solid var(--line);padding:12px 0 14px}}
+.rail h4{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:500;margin-bottom:9px;padding-inline:4px}
+@media (max-width:860px){.rail h4{padding-left:max(16px,env(safe-area-inset-left,0px))}}
+.instr{display:flex;flex-direction:column;gap:3px}
+@media (max-width:860px){
+  .instr{flex-direction:row;overflow-x:auto;gap:7px;padding-inline:max(16px,env(safe-area-inset-left,0px)) 16px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .instr::-webkit-scrollbar{display:none}
+  .instr .ibtn{flex:0 0 auto;min-width:148px}
+  .rail .belowfold{display:none}
+}
+.ibtn{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;border:1px solid transparent;
+  background:none;border-radius:9px;padding:9px 10px;cursor:pointer;position:relative}
+.ibtn .sw{width:19px;height:19px;border-radius:5px;flex:none;margin-top:1px;background:var(--surface-2);
+  border:1px solid var(--line)}
+.ibtn .nm{display:block;font-size:13px;font-weight:500;line-height:1.3}
+.ibtn .st{display:block;font-family:var(--mono);font-size:9.5px;color:var(--ink-3);margin-top:2px;letter-spacing:.02em}
+.ibtn:hover{background:var(--surface-2)}
+.ibtn.on{background:var(--accent-soft);border-color:var(--accent)}
+.ibtn.on .sw{background:var(--accent);border-color:var(--accent)}
+.ibtn.on .nm{font-weight:600;color:var(--accent-ink)}
+.ibtn.on .st{color:var(--accent-ink)}
+.ibtn.soon .nm,.ibtn.soon .st{color:var(--ink-3)}
+.ibtn.add{border:1px dashed var(--line);justify-content:center;color:var(--ink-3);font-size:12.5px;margin-top:5px}
+.ibtn.add:hover{border-color:var(--accent);color:var(--accent-ink)}
+.railnote{font-size:11px;color:var(--ink-3);line-height:1.45;padding:9px 10px;margin-top:6px;
+  background:var(--surface-2);border-radius:8px}
+.railsec{margin-top:20px;border-top:1px solid var(--line-soft);padding-top:16px}
+.srow{display:flex;gap:9px;align-items:center;padding:7px 10px;border-radius:8px;font-size:12.5px}
+.srow.on{background:var(--surface-2)}
+.srow i{width:9px;height:9px;border-radius:50%;flex:none}
+.srow .sub{font-family:var(--mono);font-size:9.5px;color:var(--ink-3);display:block;margin-top:1px}
+
+/* ---------- workspace ---------- */
+.work{padding-block:18px 34px;min-width:0}
+.steps2{display:flex;gap:0;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.s2{display:flex;gap:10px;align-items:center;border:0;background:none;cursor:pointer;padding:6px 2px;text-align:left}
+.s2 .dot{width:25px;height:25px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;
+  font-family:var(--mono);font-size:11px;font-weight:600;color:var(--ink-3);flex:none;background:var(--surface)}
+.s2 .lb{font-size:13.5px;font-weight:500;color:var(--ink-3)}
+.s2.on .dot{border-color:var(--accent);background:var(--accent);color:var(--on-accent)}
+.s2.on .lb{color:var(--ink);font-weight:600}
+.s2.done .dot{border-color:var(--good);background:var(--good-soft);color:var(--good)}
+.s2.done .lb{color:var(--ink-2)}
+.s2sep{flex:1;min-width:24px;height:2px;background:var(--line);border-radius:1px;margin:0 12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:17px}
+.card h3{font-size:13.5px;font-weight:600}
+.sub{font-size:11.5px;color:var(--ink-3);margin-top:3px;line-height:1.45}
+
+/* ---------- build the mix ---------- */
+.build{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:980px){.build{grid-template-columns:minmax(0,1fr)}}
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:9px;margin-top:13px}
+.rg{display:flex;gap:11px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);
+  border-radius:10px;padding:11px;cursor:grab;touch-action:none;position:relative;transition:border-color .12s,transform .12s}
+.rg:hover{border-color:var(--accent);transform:translateY(-1px)}
+.rg:active{cursor:grabbing}
+.rg.used{border-color:var(--good);background:var(--good-soft)}
+.rg.dragging{opacity:.35}
+.bottle{width:26px;height:36px;border-radius:3px;flex:none;position:relative;margin-top:2px}
+.bottle::before{content:"";position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:12px;height:7px;
+  border-radius:2px 2px 0 0;background:inherit;filter:brightness(.82)}
+.bottle::after{content:"";position:absolute;top:9px;left:4px;width:9px;height:13px;border-radius:2px;background:rgba(255,255,255,.3)}
+.rg .n{display:block;font-size:13px;font-weight:600;line-height:1.3}
+.rg .v{display:block;font-family:var(--mono);font-size:10.5px;color:var(--ink-3);margin-top:2px}
+.rg .w{display:block;font-size:11px;color:var(--ink-2);margin-top:5px;line-height:1.4}
+.rg .tick{position:absolute;top:9px;right:9px;color:var(--good);font-size:13px;font-weight:700}
+.ghost{position:fixed;z-index:60;pointer-events:none;background:var(--surface);border:1px solid var(--accent);
+  border-radius:9px;padding:8px 12px;font-size:12.5px;font-weight:600;box-shadow:0 10px 28px -8px rgba(0,0,0,.4);
+  display:flex;gap:8px;align-items:center}
+.ghost .d{width:12px;height:12px;border-radius:3px;flex:none}
+
+.tubecard{position:relative}
+.tubecard.over{border-color:var(--accent);background:var(--accent-soft)}
+.tubecard.flash{animation:flash .5s ease}
+@keyframes flash{0%{background:var(--good-soft)}100%{background:var(--surface)}}
+@media (prefers-reduced-motion:reduce){.tubecard.flash{animation:none}.rg{transition:none}}
+.tubebox{display:flex;gap:14px;align-items:flex-start;margin-top:12px}
+.tubesvg{flex:none}
+.volbar{height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden;margin-top:9px}
+.volbar i{display:block;height:100%;background:var(--accent);border-radius:4px;transition:width .25s}
+.volbar i.full{background:var(--good)}
+.contents{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.crow{display:flex;gap:8px;align-items:baseline;font-size:12px;padding:3px 0;border-bottom:1px solid var(--line-soft)}
+.crow .cn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.crow .cv{font-family:var(--mono);font-size:11px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.crow .x{border:0;background:none;color:var(--ink-3);cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
+.crow .x:hover{color:var(--bad)}
+.empty{font-size:12px;color:var(--ink-3);line-height:1.5;padding:10px 0}
+.checks{margin-top:13px;border-top:1px solid var(--line-soft);padding-top:12px;display:flex;flex-direction:column;gap:5px}
+.chk{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--ink-3)}
+.chk b{width:15px;height:15px;border-radius:50%;border:1.5px solid var(--line);flex:none;display:grid;place-items:center;
+  font-size:9px;color:transparent}
+.chk.ok{color:var(--ink-2)}
+.chk.ok b{border-color:var(--good);background:var(--good);color:var(--on-accent)}
+
+/* ---------- buttons ---------- */
+.btnrow{display:flex;gap:8px;margin-top:15px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--surface);padding:9px 15px;border-radius:9px;font-size:13.5px;
+  font-weight:500;cursor:pointer}
+.btn:hover:not([disabled]){border-color:var(--ink-3)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+.btn.grow{flex:1;min-width:92px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* ---------- run view ---------- */
+.run{display:grid;grid-template-columns:302px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.run{grid-template-columns:minmax(0,1fr)}}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.ctrl{display:flex;flex-direction:column;gap:4px;margin-top:15px}
+.ctrl-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ctrl-head label{font-size:13px;font-weight:500}
+.ctrl-head .val{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--accent-ink)}
+.ctrl .hint{font-size:11px;color:var(--ink-3);line-height:1.45}
+input[type=range]{width:100%;accent-color:var(--accent);margin:3px 0}
+.tempmeter{position:relative;height:7px;border-radius:4px;margin:6px 0 3px;
+  background:linear-gradient(90deg,var(--bad) 0%,var(--bad) 18%,var(--good) 30%,var(--good) 58%,var(--warn) 70%,var(--warn) 100%)}
+.tempmeter i{position:absolute;top:-3px;width:3px;height:13px;border-radius:2px;background:var(--ink);
+  box-shadow:0 0 0 2px var(--surface);transition:left .15s}
+.zonekey{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;color:var(--ink-3)}
+.seg{display:flex;gap:4px;background:var(--surface-2);padding:3px;border-radius:9px}
+.seg button{flex:1;border:0;background:none;padding:6px 4px;border-radius:7px;font-size:12.5px;cursor:pointer;color:var(--ink-2)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
+.advice{margin-top:14px;padding:11px 13px;border-radius:9px;font-size:12.5px;line-height:1.55}
+.advice.info{background:var(--accent-soft);color:var(--accent-ink)}
+.advice.warn{background:var(--warn-soft);color:var(--warn)}
+.advice.bad{background:var(--bad-soft);color:var(--bad)}
+.advice.good{background:var(--good-soft);color:var(--good)}
+.advice b{font-weight:600}
+
+.stagehead{display:flex;align-items:flex-start;gap:18px;flex-wrap:wrap}
+.bigtemp{font-family:var(--mono);font-size:42px;font-weight:600;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bigtemp span{font-size:19px;color:var(--ink-3)}
+.phasename{font-family:var(--display);font-size:15px;font-weight:600;margin-top:6px}
+.cyclebox{margin-left:auto;text-align:right}
+.cyclebox .n{font-family:var(--mono);font-size:25px;font-weight:600;font-variant-numeric:tabular-nums}
+.steps{display:flex;gap:7px;margin-top:14px}
+.step{flex:1;border:1px solid var(--line);border-radius:9px;padding:9px 10px;min-width:0}
+.step.on{border-color:var(--accent);background:var(--accent-soft)}
+.step .t{font-size:12.5px;font-weight:600}
+.step.on .t{color:var(--accent-ink)}
+.step .s{font-family:var(--mono);font-size:10px;color:var(--ink-3);margin-top:1px}
+.step.on .s{color:var(--accent-ink)}
+.molwrap{margin-top:14px;background:var(--surface-2);border-radius:9px;padding:11px}
+.mol{display:block;width:100%;height:auto;max-width:620px;margin:0 auto}
+.mol .sep{transition:transform .45s ease}
+.mol.closed .g-top{transform:translateY(26px)}
+.mol.closed .g-bot{transform:translateY(-26px)}
+.mol .primer{opacity:0;transition:opacity .35s ease,transform .45s ease}
+.mol.show-primer .primer{opacity:1}
+.mol.no-bind .primer{opacity:.4;transform:translateY(-16px)}
+.mol.no-bind .g-bot .primer{transform:translateY(16px)}
+.mol .newstrand{transform:scaleX(0);transform-box:fill-box;transition:transform .9s linear}
+.mol .newstrand.top{transform-origin:right center}
+.mol .newstrand.bot{transform-origin:left center}
+.mol.extending .newstrand{transform:scaleX(1)}
+.mol text{font-family:var(--mono);font-size:9.5px;fill:var(--ink-3)}
+@media (prefers-reduced-motion:reduce){.mol,.mol *{transition:none!important}}
+.caption{font-size:12.5px;color:var(--ink-2);margin-top:10px;line-height:1.5;min-height:36px}
+.predict{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px}
+.pbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
+.pbtn[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink);font-weight:600}
+
+.res2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:16px}
+@media (max-width:820px){.res2{grid-template-columns:minmax(0,1fr)}}
+.chart{width:100%;height:auto;display:block;margin-top:6px}
+.chart text{font-family:var(--mono);font-size:9.5px;fill:var(--ink-3)}
+.legend{display:flex;gap:13px;flex-wrap:wrap;margin-top:8px;font-size:11.5px;color:var(--ink-2)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(136px,1fr));gap:10px}
+.tile{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:var(--surface)}
+.tile .v{font-family:var(--mono);font-size:18px;font-weight:600;margin-top:3px;font-variant-numeric:tabular-nums}
+.gelwrap{display:flex;gap:13px;align-items:flex-start;margin-top:8px;flex-wrap:wrap}
+.gel{display:block;max-width:100%;height:auto;flex:none}
+.gel text{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.bandkey{font-size:11.5px;color:var(--ink-2);line-height:1.5;min-width:0;flex:1}
+.bandkey div{display:flex;gap:7px;align-items:baseline;margin-bottom:5px}
+.bandkey .sw{width:9px;height:9px;border-radius:2px;flex:none;position:relative;top:2px}
+
+/* ---------- learn ---------- */
+.lead{max-width:62ch;margin-bottom:18px}
+.lead h2{font-size:23px}
+.lead p{color:var(--ink-2);margin-top:7px;font-size:14px}
+.learn{display:grid;grid-template-columns:repeat(auto-fit,minmax(288px,1fr));gap:16px;align-items:start}
+.learn .card{padding:19px}
+.learn h3{font-size:16.5px;margin-bottom:8px}
+.learn p{font-size:13.5px;color:var(--ink-2);line-height:1.62}
+.learn p+p{margin-top:9px}
+.num{font-family:var(--mono);font-size:10px;color:var(--accent);font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;display:block;margin-bottom:7px}
+.kv{margin-top:12px;border-top:1px solid var(--line-soft);padding-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--ink-2)}
+.kv div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+.kv b{color:var(--ink);font-weight:600}
+
+/* ---------- quiz ---------- */
+.quizwrap{max-width:740px;display:flex;flex-direction:column;gap:13px}
+.chips{display:flex;gap:7px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:600}
+.qmeta{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-2)}
+.pbar{height:5px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .3s}
+.qcard{padding:21px}
+.qtopic{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  background:var(--accent-soft);color:var(--accent-ink);padding:3px 8px;border-radius:5px}
+.qtext{font-family:var(--display);font-size:18px;font-weight:600;line-height:1.4;margin-top:11px}
+.opts{display:flex;flex-direction:column;gap:8px;margin-top:15px}
+.opt{display:flex;gap:11px;align-items:flex-start;text-align:left;width:100%;border:1px solid var(--line);
+  background:var(--surface);border-radius:9px;padding:12px 13px;font-size:13.5px;cursor:pointer;line-height:1.45}
+.opt:hover:not([disabled]){border-color:var(--accent)}
+.opt .k{font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--ink-3);border:1px solid var(--line);
+  border-radius:5px;width:20px;height:20px;display:grid;place-items:center;flex:none;margin-top:1px}
+.opt.correct{border-color:var(--good);background:var(--good-soft)}
+.opt.correct .k{border-color:var(--good);color:var(--good)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.opt.wrong .k{border-color:var(--bad);color:var(--bad)}
+.opt[disabled]{cursor:default}
+.fb{margin-top:13px;padding:13px 15px;border-radius:9px;font-size:13.5px;line-height:1.6}
+.fb.ok{background:var(--good-soft);color:var(--good)}
+.fb.no{background:var(--bad-soft);color:var(--bad)}
+.fb b{display:block;font-family:var(--display);font-size:14px;margin-bottom:3px}
+.scorecard{text-align:center;padding:32px 20px}
+.scorecard .big{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1}
+.scorecard p{color:var(--ink-2);font-size:14px;margin-top:9px}
+footer{border-top:1px solid var(--line);padding-block:15px 22px;font-size:12px;color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar gut">
+    <div class="logo"><span class="mark">PCR</span><b>PCR Bench</b><span>· virtual molecular lab</span></div>
+    <div class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-simulate" aria-controls="panel-simulate" aria-selected="true">Simulate</button>
+      <button role="tab" id="tab-learn" aria-controls="panel-learn" aria-selected="false" tabindex="-1">Learn</button>
+      <button role="tab" id="tab-quiz" aria-controls="panel-quiz" aria-selected="false" tabindex="-1">Question bank</button>
+    </div>
+    <button class="themebtn" id="themebtn" aria-label="Switch to dark theme"></button>
+  </div>
+</header>
+
+<div class="shell">
+  <!-- ======== INSTRUMENT RAIL ======== -->
+  <aside class="rail">
+    <h4>Instruments</h4>
+    <div class="instr" id="instr"></div>
+    <div class="railnote" id="railnote" hidden></div>
+
+    <div class="railsec belowfold">
+      <h4>Samples</h4>
+      <div class="srow on"><i style="background:var(--accent)"></i><span>A1<span class="sub" id="sample-a1">empty tube</span></span></div>
+      <div class="srow"><i style="background:var(--warn)"></i><span>NTC<span class="sub">water, no template</span></span></div>
+    </div>
+    <div class="railsec belowfold">
+      <h4>Protocol</h4>
+      <div style="padding:0 10px">
+        <div class="mono" style="font-size:11.5px;color:var(--ink-2)">ACTB_standard</div>
+        <div style="font-size:11px;color:var(--ink-3);margin-top:3px">β-actin · 412 bp target</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ======== WORKSPACE ======== -->
+  <main class="work gut">
+
+  <!-- ---- SIMULATE ---- -->
+  <section id="panel-simulate" role="tabpanel" aria-labelledby="tab-simulate">
+    <div class="steps2">
+      <button class="s2 on" id="s2-build"><span class="dot">1</span><span class="lb">Build the mix</span></button>
+      <span class="s2sep" aria-hidden="true"></span>
+      <button class="s2" id="s2-run"><span class="dot">2</span><span class="lb">Run &amp; read</span></button>
+    </div>
+
+    <!-- Stage 1 -->
+    <div id="stage-build" class="build">
+      <div class="card">
+        <h3>Reagent shelf</h3>
+        <p class="sub">Drag a reagent onto the tube, or just click it. Each one adds the volume a standard 25 µL reaction needs.</p>
+        <div class="shelf" id="shelf"></div>
+      </div>
+
+      <div class="card tubecard" id="tube">
+        <h3>Tube A1</h3>
+        <p class="sub">Drop reagents here</p>
+        <div class="tubebox">
+          <svg class="tubesvg" id="tubesvg" width="88" height="186" viewBox="0 0 88 186" role="img" aria-labelledby="tube-t">
+            <title id="tube-t">Reaction tube showing how full it is</title>
+          </svg>
+          <div class="contents" id="contents"></div>
+        </div>
+        <div class="volbar"><i id="volbar" style="width:0%"></i></div>
+        <div class="mono" style="font-size:11px;color:var(--ink-3);margin-top:5px"><span id="volnow">0.00</span> / 25.00 µL</div>
+        <div class="checks" id="checks"></div>
+        <div class="btnrow">
+          <button class="btn grow" id="autofill">Fill it for me</button>
+          <button class="btn" id="emptytube">Empty</button>
+        </div>
+        <button class="btn primary" id="tonext" style="width:100%;margin-top:8px">Next: run the cycler</button>
+      </div>
+    </div>
+
+    <!-- Stage 2 -->
+    <div id="stage-run" class="run" hidden>
+      <div class="card">
+        <h3>Conditions</h3>
+        <p class="sub">Change a setting, predict the result, then run.</p>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="ta">Annealing temperature</label><span class="val" id="ta-v">56 °C</span></div>
+          <input type="range" id="ta" min="45" max="72" step="1" value="56">
+          <div class="tempmeter" aria-hidden="true"><i id="ta-pin"></i></div>
+          <div class="zonekey" aria-hidden="true"><span>45</span><span>58</span><span>72</span></div>
+          <p class="hint" id="ta-hint"></p>
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="cycles">Cycles</label><span class="val" id="cycles-v">30</span></div>
+          <input type="range" id="cycles" min="10" max="45" step="1" value="30">
+          <p class="hint">More is not better once the reaction plateaus.</p>
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="copies">Starting template</label><span class="val" id="copies-v">10,000</span></div>
+          <input type="range" id="copies" min="0" max="7" step="1" value="4">
+          <p class="hint">Below about 200 copies the result turns random run to run.</p>
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="ext">Extension time</label><span class="val" id="ext-v">45 s</span></div>
+          <input type="range" id="ext" min="5" max="120" step="5" value="45">
+          <p class="hint" id="ext-hint"></p>
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label for="amp">Amplicon length</label><span class="val" id="amp-v">400 bp</span></div>
+          <input type="range" id="amp" min="100" max="1500" step="50" value="400">
+          <p class="hint">The distance between your two primers.</p>
+        </div>
+
+        <div class="ctrl">
+          <div class="ctrl-head"><label id="pol-l">Polymerase</label></div>
+          <div class="seg" role="group" aria-labelledby="pol-l">
+            <button type="button" id="pol-taq" aria-pressed="true">Taq</button>
+            <button type="button" id="pol-hifi" aria-pressed="false">High-fidelity</button>
+          </div>
+          <p class="hint" id="pol-hint"></p>
+        </div>
+
+        <div class="btnrow">
+          <button class="btn primary grow" id="run">Run reaction</button>
+          <button class="btn" id="step">Step</button>
+        </div>
+        <div class="btnrow" style="margin-top:8px">
+          <button class="btn grow" id="reset">Reset run</button>
+          <button class="btn grow" id="backtobuild">Edit the mix</button>
+        </div>
+
+        <div class="advice" id="advice"></div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="stagehead">
+            <div>
+              <div class="eyebrow">Block temperature</div>
+              <div class="bigtemp" id="bigtemp">25.0<span> °C</span></div>
+              <div class="phasename" id="phasename">Ready</div>
+            </div>
+            <div class="cyclebox">
+              <div class="eyebrow">Cycle</div>
+              <div class="n"><span id="cyc-now">0</span> / <span id="cyc-max">30</span></div>
+            </div>
+          </div>
+
+          <div class="steps" id="steps">
+            <div class="step" data-k="denature"><div class="t">Denature</div><div class="s">95 °C · 30 s</div></div>
+            <div class="step" data-k="anneal"><div class="t">Anneal</div><div class="s" id="step-anneal-s">56 °C · 30 s</div></div>
+            <div class="step" data-k="extend"><div class="t">Extend</div><div class="s" id="step-extend-s">72 °C · 45 s</div></div>
+          </div>
+
+          <div class="molwrap">
+            <svg class="mol closed" id="mol" viewBox="0 0 440 156" role="img" aria-labelledby="mol-t">
+              <title id="mol-t">One PCR cycle: strands separating, primers binding, new strands being built</title>
+              <g class="g-top sep">
+                <rect class="newstrand top" x="150" y="54" width="250" height="9" rx="4.5" fill="var(--accent)" opacity=".45"></rect>
+                <rect x="40" y="40" width="360" height="10" rx="5" fill="var(--ink-3)"></rect>
+                <rect class="primer" x="352" y="54" width="48" height="9" rx="4.5" fill="var(--warn)"></rect>
+                <text x="40" y="32">template strand 1</text>
+              </g>
+              <g class="g-bot sep">
+                <rect x="40" y="106" width="360" height="10" rx="5" fill="var(--ink-3)"></rect>
+                <rect class="newstrand bot" x="40" y="93" width="250" height="9" rx="4.5" fill="var(--accent)" opacity=".45"></rect>
+                <rect class="primer" x="40" y="93" width="48" height="9" rx="4.5" fill="var(--warn)"></rect>
+                <text x="40" y="134">template strand 2</text>
+              </g>
+            </svg>
+            <p class="caption" id="caption"></p>
+          </div>
+
+          <div class="eyebrow" style="margin-top:13px">Predict before you run</div>
+          <div class="predict" role="group" aria-label="Predict the outcome">
+            <button class="pbtn" data-p="clean" aria-pressed="false">One clean band</button>
+            <button class="pbtn" data-p="extra" aria-pressed="false">Extra bands</button>
+            <button class="pbtn" data-p="none" aria-pressed="false">Empty lane</button>
+          </div>
+        </div>
+
+        <div class="res2">
+          <div class="card">
+            <h3>Amplification</h3>
+            <p class="sub">Molecules per reaction, log scale</p>
+            <svg class="chart" id="chart" viewBox="0 0 540 250" role="img" aria-labelledby="chart-t">
+              <title id="chart-t">Amplification curve: product molecules against cycle number</title>
+            </svg>
+            <div class="legend">
+              <span><i style="background:var(--accent)"></i>Target product</span>
+              <span><i style="background:var(--warn)"></i>Non-specific</span>
+              <span><i style="background:var(--bad)"></i>Primer dimer</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Gel</h3>
+            <p class="sub">1.5 % agarose, run after the last cycle</p>
+            <div class="gelwrap">
+              <svg class="gel" id="gel" width="186" height="252" viewBox="0 0 186 252" role="img" aria-labelledby="gel-t">
+                <title id="gel-t">Simulated agarose gel: ladder, sample and no-template control lanes</title>
+              </svg>
+              <div class="bandkey" id="bandkey"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tiles" id="tiles"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ---- LEARN ---- -->
+  <section id="panel-learn" role="tabpanel" aria-labelledby="tab-learn" hidden>
+    <div class="lsteps" id="lsteps"></div>
+    <div class="lesson">
+      <div class="card lproto">
+        <h3>Protocol</h3>
+        <p class="sub">Standard Taq · 30 cycles</p>
+        <div id="lproto" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card" id="lmain"></div>
+
+      <div class="lsupport" id="lsupport"></div>
+    </div>
+  </section>
+
+  <!-- ---- QUIZ ---- -->
+  <section id="panel-quiz" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+    <div class="quizwrap">
+      <div class="lead" style="margin-bottom:4px">
+        <h2>Question bank</h2>
+        <p>Pick a topic, or take the whole set. Every answer comes with the reasoning.</p>
+      </div>
+      <div class="chips" id="chips" role="group" aria-label="Topic filter"></div>
+      <div class="qmeta"><span id="qcount"></span><span id="qscore" class="mono"></span></div>
+      <div class="pbar"><i id="qprog" style="width:0%"></i></div>
+      <div id="qhost"></div>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<footer><div class="gut" style="max-width:1500px;margin:0 auto">PCR Bench — a teaching model. Numbers are realistic but approximate; nothing here replaces a protocol.</div></footer>
+
+<script>
+(function(){
+"use strict";
+var $=function(s){return document.querySelector(s)};
+var clamp=function(v,a,b){return Math.max(a,Math.min(b,v))};
+var esc=function(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")};
+
+/* ================= tabs ================= */
+var TABS=["simulate","learn","quiz"];
+function showTab(name,focus){
+  if(TABS.indexOf(name)<0)name="simulate";
+  TABS.forEach(function(t){
+    var b=document.getElementById("tab-"+t),p=document.getElementById("panel-"+t),on=(t===name);
+    b.setAttribute("aria-selected",on?"true":"false");b.tabIndex=on?0:-1;p.hidden=!on;
+    if(on&&focus)b.focus();
+  });
+  if(location.hash.slice(1)!==name){try{location.hash=name}catch(e){}}
+}
+TABS.forEach(function(t,i){
+  var b=document.getElementById("tab-"+t);
+  b.addEventListener("click",function(){showTab(t)});
+  b.addEventListener("keydown",function(e){
+    var d=e.key==="ArrowRight"?1:e.key==="ArrowLeft"?-1:0;
+    if(!d)return;e.preventDefault();showTab(TABS[(i+d+TABS.length)%TABS.length],true);
+  });
+});
+window.addEventListener("hashchange",function(){showTab(location.hash.slice(1))});
+
+/* ================= instrument rail ================= */
+var INSTRUMENTS=[
+ {id:"cycler",n:"Thermocycler",s:"VT-96 · active",on:true,
+  note:"The instrument you are using. Everything on the Simulate tab runs on it."},
+ {id:"gel",n:"Gel electrophoresis",s:"planned",
+  note:"Planned. It would take the sample this reaction produces and separate it by length — the gel on the right is a preview of what that instrument will own."},
+ {id:"spec",n:"Spectrophotometer",s:"planned",
+  note:"Planned. Reads DNA concentration and purity from the same sample record."},
+ {id:"spin",n:"Microcentrifuge",s:"planned",
+  note:"Planned. Spin-column cleanup between steps."},
+ {id:"pipette",n:"Micropipette",s:"P20 · in hand",
+  note:"You are using it already: every reagent you drop into the tube is a pipetting step."}
+];
+function renderRail(){
+  var h=INSTRUMENTS.map(function(i){
+    return '<button class="ibtn '+(i.on?"on":"soon")+'" data-i="'+i.id+'">'+
+      '<span class="sw"></span><span><span class="nm">'+esc(i.n)+'</span>'+
+      '<span class="st">'+esc(i.s)+'</span></span></button>';
+  }).join("");
+  h+='<button class="ibtn add" data-i="add">+ Add instrument</button>';
+  $("#instr").innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll("#instr .ibtn"),function(b){
+    b.addEventListener("click",function(){
+      var id=b.getAttribute("data-i"),note=$("#railnote");
+      if(id==="add"){
+        note.hidden=false;
+        note.textContent="Each instrument is a separate module that reads and writes the same sample. Adding one means writing its simulation and its panel — the rest of the bench already knows how to talk to it.";
+        return;
+      }
+      var it=INSTRUMENTS.filter(function(x){return x.id===id})[0];
+      note.hidden=false;note.textContent=it.note;
+    });
+  });
+}
+
+/* ================= reagents ================= */
+var REAGENTS=[
+ {id:"template",n:"Template DNA",s:"gDNA · 50 ng/µL",v:2.0,c:"#7FA8CC",w:"The DNA you want to copy."},
+ {id:"fprimer",n:"Forward primer",s:"10 µM · ACTB-F",v:1.0,c:"#DB9A38",w:"Marks where copying starts on one strand."},
+ {id:"rprimer",n:"Reverse primer",s:"10 µM · ACTB-R",v:1.0,c:"#DB9A38",w:"Marks the other end, on the other strand."},
+ {id:"dntp",n:"dNTP mix",s:"10 mM each",v:0.5,c:"#72C2A0",w:"The bases the new strands are built from."},
+ {id:"taq",n:"Taq polymerase",s:"5 U/µL",v:0.25,c:"#C9819A",w:"The enzyme that does the copying."},
+ {id:"mgcl2",n:"MgCl₂",s:"25 mM",v:1.5,c:"#A796D4",w:"Taq cannot function without magnesium."},
+ {id:"buffer",n:"10× PCR buffer",s:"with KCl",v:2.5,c:"#B3AC9E",w:"Holds pH and salt where the enzyme works."},
+ {id:"water",n:"Nuclease-free water",s:"fills to 25 µL",v:null,c:"#8CC4D4",w:"Brings the reaction up to volume."}
+];
+var RMAP={};REAGENTS.forEach(function(r){RMAP[r.id]=r});
+var TARGET=25.0;
+var tube={};  /* id -> µL */
+
+function tubeVol(){var t=0;for(var k in tube)t+=tube[k];return Math.round(t*100)/100}
+function addReagent(id){
+  var r=RMAP[id];if(!r)return false;
+  if(tube[id]!==undefined)return false;
+  var v=r.v;
+  if(v===null){v=Math.round((TARGET-tubeVol())*100)/100;if(v<=0)return false}
+  if(tubeVol()+v>TARGET+0.001)return false;
+  tube[id]=v;renderBuild();return true;
+}
+function removeReagent(id){delete tube[id];renderBuild()}
+function autofill(){
+  tube={};
+  REAGENTS.forEach(function(r){if(r.id!=="water")tube[r.id]=r.v});
+  tube.water=Math.round((TARGET-tubeVol())*100)/100;
+  renderBuild();
+}
+
+/* what a missing reagent does to the reaction */
+function reagentState(){
+  var missing=REAGENTS.filter(function(r){return tube[r.id]===undefined}).map(function(r){return r.id});
+  var vol=tubeVol();
+  var out={factor:1,reason:"",noTemplate:false,missing:missing,vol:vol,ready:missing.length===0&&Math.abs(vol-TARGET)<0.01};
+  if(missing.indexOf("taq")>=0){out.factor=0;out.reason="There is no polymerase in the tube. Nothing can copy anything.";return out}
+  if(missing.indexOf("dntp")>=0){out.factor=0;out.reason="No dNTPs — there are no bases to build new strands from.";return out}
+  if(missing.indexOf("mgcl2")>=0){out.factor=0;out.reason="No magnesium. Taq polymerase is a metalloenzyme and does nothing without Mg²⁺.";return out}
+  if(missing.indexOf("fprimer")>=0&&missing.indexOf("rprimer")>=0){out.factor=0;out.reason="No primers at all. Taq cannot start a strand from nothing.";return out}
+  if(missing.indexOf("fprimer")>=0||missing.indexOf("rprimer")>=0){out.factor=0;out.reason="Only one primer. Copying runs in one direction forever and never produces a fixed-length band.";return out}
+  if(missing.indexOf("template")>=0){out.noTemplate=true;out.reason="No template DNA — so this tube is really a no-template control. Watch what still shows up on the gel.";}
+  if(missing.indexOf("buffer")>=0){out.factor*=0.12;out.reason="No buffer, so the pH and salt are wrong and the enzyme barely works.";}
+  if(vol<TARGET-0.01){
+    var f=clamp(vol/TARGET,0.2,1);
+    out.factor*=0.5+0.5*f;
+    if(!out.reason)out.reason="The tube is only at "+vol.toFixed(2)+" µL, so every concentration is off.";
+  }
+  return out;
+}
+
+/* ================= tube + build UI ================= */
+function drawTube(){
+  var vol=tubeVol(),frac=clamp(vol/TARGET,0,1);
+  var x=14,w=46,topY=18,botY=162,r=20;
+  var innerTop=topY+6,innerBot=botY-4,innerH=innerBot-innerTop;
+  var lh=innerH*frac, ly=innerBot-lh;
+  var shape='M'+x+' '+topY+' L'+x+' '+(botY-r)+' Q'+x+' '+botY+' '+(x+w/2)+' '+botY+
+            ' Q'+(x+w)+' '+botY+' '+(x+w)+' '+(botY-r)+' L'+(x+w)+' '+topY+' Z';
+  var mix=Object.keys(tube).length;
+  var liquid=mix>=5?"#D9B45E":(mix>=2?"#C9CF9E":"#A8CBDA");
+  var s='<defs><clipPath id="tubeclip"><path d="'+shape+'"></path></clipPath></defs>';
+  s+='<path d="'+shape+'" fill="var(--surface-2)"></path>';
+  if(frac>0)s+='<rect x="'+x+'" y="'+ly.toFixed(1)+'" width="'+w+'" height="'+lh.toFixed(1)+'" fill="'+liquid+'" clip-path="url(#tubeclip)" opacity=".9"></rect>';
+  s+='<path d="'+shape+'" fill="none" stroke="var(--ink-3)" stroke-width="1.5" opacity=".55"></path>';
+  s+='<rect x="'+(x-4)+'" y="'+(topY-9)+'" width="'+(w+8)+'" height="10" rx="3" fill="var(--ink-3)" opacity=".4"></rect>';
+  [5,10,15,20,25].forEach(function(t){
+    var ty=innerBot-innerH*(t/TARGET);
+    s+='<line x1="'+(x+w)+'" y1="'+ty.toFixed(1)+'" x2="'+(x+w+5)+'" y2="'+ty.toFixed(1)+'" stroke="var(--ink-3)" stroke-width="1" opacity=".5"></line>';
+    s+='<text x="'+(x+w+8)+'" y="'+(ty+3).toFixed(1)+'" font-family="var(--mono)" font-size="7.5" fill="var(--ink-3)">'+t+'</text>';
+  });
+  s+='<text x="'+(x+w/2)+'" y="180" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--ink-2)">A1</text>';
+  $("#tubesvg").innerHTML='<title id="tube-t">Reaction tube showing how full it is</title>'+s;
+}
+function renderBuild(){
+  drawTube();
+  var vol=tubeVol();
+  $("#volnow").textContent=vol.toFixed(2);
+  var bar=$("#volbar");
+  bar.style.width=clamp(vol/TARGET*100,0,100)+"%";
+  bar.className=Math.abs(vol-TARGET)<0.01?"full":"";
+
+  var keys=REAGENTS.filter(function(r){return tube[r.id]!==undefined});
+  $("#contents").innerHTML=keys.length?keys.map(function(r){
+    return '<div class="crow"><span class="cn">'+esc(r.n)+'</span>'+
+      '<span class="cv">'+tube[r.id].toFixed(2)+' µL</span>'+
+      '<button class="x" data-rm="'+r.id+'" aria-label="Remove '+esc(r.n)+'">×</button></div>';
+  }).join(""):'<p class="empty">Nothing in the tube yet. Drag a reagent across, or click one on the shelf.</p>';
+  Array.prototype.forEach.call(document.querySelectorAll("[data-rm]"),function(b){
+    b.addEventListener("click",function(){removeReagent(b.getAttribute("data-rm"))});
+  });
+
+  $("#checks").innerHTML=REAGENTS.map(function(r){
+    var ok=tube[r.id]!==undefined;
+    return '<div class="chk'+(ok?" ok":"")+'"><b>✓</b>'+esc(r.n)+'</div>';
+  }).join("");
+
+  Array.prototype.forEach.call(document.querySelectorAll("#shelf .rg"),function(el){
+    var id=el.getAttribute("data-r"),used=tube[id]!==undefined;
+    el.classList.toggle("used",used);
+    var t=el.querySelector(".tick");if(t)t.textContent=used?"✓":"";
+  });
+
+  var st=reagentState();
+  $("#sample-a1").textContent=vol<0.01?"empty tube":vol.toFixed(2)+" µL · "+keys.length+" components";
+  var nx=$("#tonext");
+  nx.textContent=st.ready?"Next: run the cycler":(vol<0.01?"Add something first":"Run it anyway ("+st.missing.length+" missing)");
+  nx.disabled=vol<0.01;
+  nx.className="btn "+(st.ready?"primary":"");
+  if(!st.ready&&vol>=0.01)nx.style.marginTop="8px";
+  syncLabels();
+}
+function renderShelf(){
+  $("#shelf").innerHTML=REAGENTS.map(function(r){
+    return '<button class="rg" data-r="'+r.id+'" type="button">'+
+      '<span class="bottle" style="background:'+r.c+'"></span>'+
+      '<span style="min-width:0"><span class="n">'+esc(r.n)+'</span>'+
+      '<span class="v">'+esc(r.s)+' · '+(r.v===null?"to 25.00":r.v.toFixed(2))+' µL</span>'+
+      '<span class="w">'+esc(r.w)+'</span></span><span class="tick"></span></button>';
+  }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll("#shelf .rg"),function(el){
+    attachDrag(el,el.getAttribute("data-r"));
+  });
+}
+
+/* pointer drag with click fallback — works with mouse, touch and keyboard */
+function attachDrag(el,id){
+  var ghost=null,sx=0,sy=0,moved=false,pid=null;
+  function over(e){
+    var t=$("#tube").getBoundingClientRect();
+    return e.clientX>=t.left&&e.clientX<=t.right&&e.clientY>=t.top&&e.clientY<=t.bottom;
+  }
+  el.addEventListener("pointerdown",function(e){
+    if(e.button!==undefined&&e.button!==0)return;
+    pid=e.pointerId;sx=e.clientX;sy=e.clientY;moved=false;
+    try{el.setPointerCapture(pid)}catch(err){}
+  });
+  el.addEventListener("pointermove",function(e){
+    if(pid===null||e.pointerId!==pid)return;
+    if(!moved&&Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)<6)return;
+    if(!moved){
+      moved=true;el.classList.add("dragging");
+      ghost=document.createElement("div");ghost.className="ghost";
+      ghost.innerHTML='<span class="d" style="background:'+RMAP[id].c+'"></span>'+esc(RMAP[id].n);
+      document.body.appendChild(ghost);
+    }
+    e.preventDefault();
+    ghost.style.left=(e.clientX+14)+"px";ghost.style.top=(e.clientY-14)+"px";
+    $("#tube").classList.toggle("over",over(e));
+  });
+  function finish(e){
+    if(pid===null)return;
+    var wasOver=moved?over(e):true;
+    if(ghost){ghost.remove();ghost=null}
+    el.classList.remove("dragging");$("#tube").classList.remove("over");
+    try{el.releasePointerCapture(pid)}catch(err){}
+    pid=null;
+    if(wasOver){
+      if(addReagent(id)){
+        var tc=$("#tube");tc.classList.remove("flash");void tc.offsetWidth;tc.classList.add("flash");
+      }
+    }
+    moved=false;
+  }
+  el.addEventListener("pointerup",finish);
+  el.addEventListener("pointercancel",function(){
+    if(ghost){ghost.remove();ghost=null}
+    el.classList.remove("dragging");$("#tube").classList.remove("over");pid=null;moved=false;
+  });
+  el.addEventListener("keydown",function(e){
+    if(e.key==="Enter"||e.key===" "){e.preventDefault();addReagent(id)}
+  });
+}
+
+/* ================= stage switching ================= */
+function goStage(which){
+  var build=which==="build";
+  $("#stage-build").hidden=!build;
+  $("#stage-run").hidden=build;
+  $("#s2-build").className="s2 "+(build?"on":(tubeVol()>0?"done":""));
+  $("#s2-run").className="s2 "+(build?"":"on");
+  if(!build){advice();if(!result)setIdle()}
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+$("#s2-build").addEventListener("click",function(){goStage("build")});
+$("#s2-run").addEventListener("click",function(){if(tubeVol()>0)goStage("run")});
+$("#tonext").addEventListener("click",function(){goStage("run")});
+$("#backtobuild").addEventListener("click",function(){stopAnim();goStage("build")});
+$("#autofill").addEventListener("click",autofill);
+$("#emptytube").addEventListener("click",function(){tube={};result=null;renderBuild()});
+
+/* ================= model ================= */
+var NMAX=6e12, THRESH=1e9, TM_F=61, TM_R=63;
+var P={ta:56,cycles:30,copies:10000,ext:45,amp:400,pol:"taq"};
+var COPY_STEPS=[1,10,100,1000,10000,100000,1000000,10000000];
+var els={ta:$("#ta"),cycles:$("#cycles"),copies:$("#copies"),ext:$("#ext"),amp:$("#amp")};
+var prediction=null,result=null,anim=null,shownCycle=0;
+
+function gauss(){var u=0,v=0;while(u===0)u=Math.random();while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function binom(n,p){
+  if(n<=0||p<=0)return 0;
+  if(n>800){var m=n*p,sd=Math.sqrt(n*p*(1-p));return Math.max(0,m+sd*gauss())}
+  var k=0;for(var i=0;i<n;i++)if(Math.random()<p)k++;return k;
+}
+function kinetics(p){
+  var tmLow=Math.min(TM_F,TM_R),d=p.ta-tmLow;
+  var binding=d<=-4?1:clamp(1-(d+4)/10,0,1);
+  var mispriming=d>=-10?0:Math.min(.7,(-10-d)/18);
+  var dimer=d<-12?Math.min(.35,.05+(-12-d)/40):.02;
+  var extF=clamp(p.ext/(p.amp/1000*60),0,1);
+  var rs=reagentState();
+  return {delta:d,binding:binding,mispriming:mispriming,dimer:dimer,extF:extF,rs:rs,
+          eff:.95*binding*extF*rs.factor};
+}
+function simulate(p){
+  var k=kinetics(p);
+  var copies=k.rs.noTemplate?0:p.copies;
+  var O=copies*2,M=0,S=0,NS=0,D=0;
+  var stoch=copies>0&&copies<200;
+  var rows=[{c:0,S:0,NS:0,D:0}];
+  for(var c=1;c<=p.cycles;c++){
+    var cap=clamp(1-(O+M+S+NS+D)/NMAX,0,1);
+    var E=k.eff*cap;
+    var draw=function(n,pr){return stoch?binom(n,pr):n*pr};
+    var nM=draw(O,E),nS=draw(M+S,E);
+    var nNS=draw(NS,E)+draw(O,E*k.mispriming);
+    var nD=(D+(k.dimer>.02?2500:150))*E*k.dimer;
+    M+=nM;S+=nS;NS+=nNS;D+=nD;
+    rows.push({c:c,S:S,NS:NS,D:D});
+  }
+  var ct=null;
+  for(var i=0;i<rows.length;i++){if(rows[i].S>=THRESH){ct=i;break}}
+  var last=rows[rows.length-1];
+  var tot=last.S+last.NS+last.D;
+  var artefact=tot>0?(last.NS+last.D)/tot:0;
+  var errRate=p.pol==="taq"?1e-5:1e-7;
+  var errFrac=1-Math.exp(-errRate*p.amp*p.cycles);
+  var duplex=last.S/2;
+  var ngYield=duplex*p.amp*650/6.022e23*1e9;
+  /* a band needs roughly a nanogram of DNA to be visible on a stained gel */
+  var verdict=ngYield<1?"none":(artefact>.15?"extra":"clean");
+  return {rows:rows,k:k,ct:ct,last:last,verdict:verdict,artefact:artefact,
+          errFrac:errFrac,ngYield:ngYield,duplex:duplex};
+}
+
+/* ================= formatting ================= */
+function sci(n){
+  if(n<1)return "0";
+  if(n<1000)return String(Math.round(n));
+  var e=Math.floor(Math.log10(n)),m=n/Math.pow(10,e),sup="⁰¹²³⁴⁵⁶⁷⁸⁹";
+  return m.toFixed(1)+"×10"+String(e).split("").map(function(ch){return sup[+ch]}).join("");
+}
+function comma(n){return n.toLocaleString("en-US")}
+function ngOf(strands,bp){return (strands/2)*bp*650/6.022e23*1e9}
+function fmtNg(v){
+  if(v<0.001)return "below 0.001 ng";
+  if(v<10)return v.toFixed(v<0.1?3:2)+" ng";
+  if(v<1000)return v.toFixed(0)+" ng";
+  return (v/1000).toFixed(2)+" µg";
+}
+
+/* ================= control labels + advice ================= */
+function readControls(){
+  P.ta=+els.ta.value;P.cycles=+els.cycles.value;P.copies=COPY_STEPS[+els.copies.value];
+  P.ext=+els.ext.value;P.amp=+els.amp.value;
+}
+function syncLabels(){
+  $("#ta-v").textContent=P.ta+" °C";
+  $("#cycles-v").textContent=P.cycles;
+  $("#copies-v").textContent=comma(P.copies);
+  $("#ext-v").textContent=P.ext+" s";
+  $("#amp-v").textContent=P.amp+" bp";
+  $("#cyc-max").textContent=P.cycles;
+  $("#step-anneal-s").textContent=P.ta+" °C · 30 s";
+  $("#step-extend-s").textContent="72 °C · "+P.ext+" s";
+  $("#ta-pin").style.left=((P.ta-45)/27*100)+"%";
+  $("#ext-hint").textContent="Taq copies about 1 kb per minute — "+P.amp+" bp needs about "+Math.round(P.amp/1000*60)+" s.";
+  $("#pol-hint").textContent=P.pol==="taq"?"Taq: about 1 error per 10⁵ bases copied."
+    :"High-fidelity: about 1 error per 10⁷ bases copied.";
+  var d=P.ta-Math.min(TM_F,TM_R);
+  $("#ta-hint").textContent="Primer Tm 61 / 63 °C — you are "+(d>=0?"+"+d:d)+" °C relative to the lower one.";
+}
+function advice(){
+  var k=kinetics(P),box=$("#advice"),cls="advice",txt="";
+  if(k.rs.factor===0){cls+=" bad";txt="<b>This will not amplify.</b> "+k.rs.reason;}
+  else if(k.rs.noTemplate){cls+=" warn";txt="<b>No template in the tube.</b> "+k.rs.reason;}
+  else if(k.rs.reason){cls+=" warn";txt="<b>Check the mix.</b> "+k.rs.reason;}
+  else if(k.binding<.35){cls+=" bad";txt="<b>Too hot to anneal.</b> At "+P.ta+" °C the primers cannot hold on long enough for the polymerase to start. Expect an empty lane.";}
+  else if(k.binding<.85){cls+=" warn";txt="<b>Close to the primer Tm.</b> At "+P.ta+" °C only some primers stay bound each cycle, so efficiency drops to about "+Math.round(k.eff*100)+" %. Come down to 56 °C.";}
+  else if(k.mispriming>.25){cls+=" warn";txt="<b>Low specificity.</b> At "+P.ta+" °C primers will also bind near-matching sites. Expect extra bands and primer dimers.";}
+  else if(k.extF<.9){cls+=" warn";txt="<b>Extension is too short.</b> A "+P.amp+" bp product needs about "+Math.round(P.amp/1000*60)+" s; you have allowed "+P.ext+" s, so many copies never finish.";}
+  else if(P.copies<200){cls+=" warn";txt="<b>Low template.</b> With "+comma(P.copies)+" copies the early cycles are chance events — run it twice and compare.";}
+  else if(P.cycles>38){cls+=" warn";txt="<b>Past the plateau.</b> After about cycle 32 you are adding polymerase errors, not product.";}
+  else{cls+=" good";txt="<b>Conditions look sound.</b> "+P.ta+" °C sits in the specific window for these primers, and the extension time covers "+P.amp+" bp.";}
+  box.className=cls;box.innerHTML=txt;
+}
+
+/* ================= chart ================= */
+function drawChart(upto){
+  var W=540,H=250,L=46,R=14,T=14,B=28,pw=W-L-R,ph=H-T-B,yMax=13,n=P.cycles;
+  var x=function(c){return L+(n?c/n:0)*pw};
+  var y=function(v){return T+ph-clamp((v<1?0:Math.log10(v))/yMax,0,1)*ph};
+  var s=[];
+  var sup={0:"⁰",3:"³",6:"⁶",9:"⁹",12:"¹²"};
+  for(var g=0;g<=12;g+=3){
+    var yy=y(Math.pow(10,g));
+    s.push('<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="var(--line)" stroke-width="1"></line>');
+    s.push('<text x="'+(L-7)+'" y="'+(yy+3.5)+'" text-anchor="end">10'+sup[g]+'</text>');
+  }
+  var ty=y(THRESH);
+  s.push('<line x1="'+L+'" y1="'+ty+'" x2="'+(W-R)+'" y2="'+ty+'" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="4 4"></line>');
+  s.push('<text x="'+(W-R)+'" y="'+(ty-6)+'" text-anchor="end">detection threshold</text>');
+  [0,Math.round(n/3),Math.round(2*n/3),n].forEach(function(t){
+    s.push('<text x="'+x(t)+'" y="'+(H-9)+'" text-anchor="middle">'+t+'</text>');
+  });
+  s.push('<line x1="'+L+'" y1="'+(T+ph)+'" x2="'+(W-R)+'" y2="'+(T+ph)+'" stroke="var(--line)" stroke-width="1.5"></line>');
+  s.push('<line x1="'+L+'" y1="'+T+'" x2="'+L+'" y2="'+(T+ph)+'" stroke="var(--line)" stroke-width="1.5"></line>');
+  if(result){
+    var rows=result.rows.slice(0,Math.max(1,upto+1));
+    [["S","var(--accent)",2.6,""],["NS","var(--warn)",2,""],["D","var(--bad)",1.8,"3 3"]].forEach(function(sr){
+      var key=sr[0],any=false;
+      rows.forEach(function(r){if(r[key]>=1)any=true});
+      if(!any)return;
+      var d="",started=false;
+      rows.forEach(function(r){
+        d+=(started?"L":"M")+x(r.c).toFixed(1)+" "+y(Math.max(r[key],1)).toFixed(1)+" ";started=true;
+      });
+      s.push('<path d="'+d+'" fill="none" stroke="'+sr[1]+'" stroke-width="'+sr[2]+'" stroke-linecap="round" stroke-linejoin="round"'+(sr[3]?' stroke-dasharray="'+sr[3]+'"':'')+'></path>');
+      var lr=rows[rows.length-1];
+      if(lr[key]>=1)s.push('<circle cx="'+x(lr.c).toFixed(1)+'" cy="'+y(Math.max(lr[key],1)).toFixed(1)+'" r="3.4" fill="'+sr[1]+'"></circle>');
+    });
+  }
+  $("#chart").innerHTML='<title id="chart-t">Amplification curve: product molecules against cycle number</title>'+s.join("");
+}
+
+/* ================= gel ================= */
+function drawGel(show){
+  var W=186,H=252,top=30,bot=236;
+  var pos=function(bp){
+    var hi=Math.log10(1600),lo=Math.log10(38);
+    return top+(hi-Math.log10(clamp(bp,38,1600)))/(hi-lo)*(bot-top);
+  };
+  var s=['<rect x="26" y="14" width="'+(W-26)+'" height="'+(H-14)+'" rx="5" fill="var(--surface-2)"></rect>'];
+  [{x:32,w:40,n:"Ladder"},{x:80,w:46,n:"Sample"},{x:134,w:46,n:"NTC"}].forEach(function(l){
+    s.push('<rect x="'+l.x+'" y="18" width="'+l.w+'" height="'+(H-26)+'" rx="3" fill="var(--surface)" opacity=".4"></rect>');
+    s.push('<rect x="'+l.x+'" y="18" width="'+l.w+'" height="5" rx="2" fill="var(--ink-3)" opacity=".45"></rect>');
+    s.push('<text x="'+(l.x+l.w/2)+'" y="11" text-anchor="middle" font-size="9" fill="var(--ink-2)">'+l.n+'</text>');
+  });
+  [1500,1000,700,500,400,300,200,100,50].forEach(function(bp){
+    var yy=pos(bp);
+    s.push('<rect x="34" y="'+(yy-1.6)+'" width="36" height="3.2" rx="1.6" fill="var(--ink-2)" opacity=".5"></rect>');
+    if(bp===1500||bp===1000||bp===500||bp===200||bp===50)
+      s.push('<text x="22" y="'+(yy+3)+'" font-size="8.5" fill="var(--ink-3)" text-anchor="end">'+bp+'</text>');
+  });
+  if(show&&result){
+    var last=result.last;
+    var band=function(bp,strands,color){
+      var ng=ngOf(strands,bp);
+      if(ng<0.3)return;
+      var o=clamp(.25+Math.log10(ng/0.3)/3.5*0.7,.25,.95),yy=pos(bp),hh=clamp(3+o*4,3,7);
+      s.push('<rect x="82" y="'+(yy-hh/2).toFixed(1)+'" width="42" height="'+hh.toFixed(1)+'" rx="'+(hh/2).toFixed(1)+'" fill="'+color+'" opacity="'+o.toFixed(2)+'"></rect>');
+    };
+    band(P.amp,last.S,"var(--accent)");
+    band(Math.round(P.amp*0.55),last.NS*0.6,"var(--warn)");
+    band(Math.round(P.amp*1.7),last.NS*0.4,"var(--warn)");
+    band(45,last.D,"var(--bad)");
+  }
+  $("#gel").innerHTML='<title id="gel-t">Simulated agarose gel: ladder, sample and no-template control lanes</title>'+s.join("");
+
+  var key=$("#bandkey");
+  if(!show||!result){key.innerHTML='<div style="color:var(--ink-3)">Run the reaction to load the gel.</div>';return}
+  var L2=result.last,rows=[];
+  var push=function(c,label,name,strands,bp){
+    var ng=ngOf(strands,bp);if(ng<0.3)return;
+    rows.push([c,label,name,fmtNg(ng)]);
+  };
+  push('var(--accent)',P.amp+" bp","target product",L2.S,P.amp);
+  push('var(--warn)',"mixed","non-specific",L2.NS,Math.round(P.amp*0.9));
+  push('var(--bad)',"~45 bp","primer dimer",L2.D,45);
+  if(!rows.length)rows.push(['var(--ink-3)',"—","nothing visible — under about 1 ng",""]);
+  key.innerHTML=rows.map(function(r){
+    return '<div><span class="sw" style="background:'+r[0]+'"></span><span><b>'+r[1]+'</b> '+r[2]+(r[3]?" · "+r[3]:"")+'</span></div>';
+  }).join("")+'<div style="color:var(--ink-3);margin-top:8px">NTC lane is empty, as it should be.</div>';
+}
+
+/* ================= tiles ================= */
+function drawTiles(){
+  var host=$("#tiles");
+  if(!result){
+    host.innerHTML=["Ct value","Final copies","Yield","Per-cycle efficiency"].map(function(t){
+      return '<div class="tile"><div class="eyebrow">'+t+'</div><div class="v" style="color:var(--ink-3)">—</div></div>';
+    }).join("");return;
+  }
+  var r=result;
+  var items=[
+    ["Ct value",r.ct===null?"not reached":String(r.ct),r.ct===null?"var(--bad)":"var(--ink)"],
+    ["Final copies",sci(r.duplex),r.duplex<1e7?"var(--bad)":"var(--ink)"],
+    ["Yield",fmtNg(r.ngYield),r.ngYield<1?"var(--bad)":"var(--ink)"],
+    ["Per-cycle efficiency",Math.round(r.k.eff*100)+" %",r.k.eff<.5?"var(--bad)":"var(--ink)"],
+    ["Target purity",r.ngYield<=0?"—":((1-r.artefact)*100).toFixed(1)+" %",r.artefact>.15?"var(--warn)":"var(--good)"],
+    ["Copies with an error",(r.errFrac*100).toFixed(2)+" %",r.errFrac>.05?"var(--warn)":"var(--ink)"]
+  ];
+  host.innerHTML=items.map(function(i){
+    return '<div class="tile"><div class="eyebrow">'+i[0]+'</div><div class="v" style="color:'+i[2]+'">'+i[1]+'</div></div>';
+  }).join("");
+}
+
+/* ================= stage animation ================= */
+var PHASES=[
+  {k:"denature",t:95,label:"Denaturing",cap:"At 95 °C the two strands come apart. Nothing is being copied yet — you are making templates available."},
+  {k:"anneal",t:null,label:"Annealing",cap:""},
+  {k:"extend",t:72,label:"Extending",cap:"Taq polymerase builds a new strand outward from each primer. Each template has become two."}
+];
+function setPhase(idx,cycle){
+  var mol=$("#mol"),ph=PHASES[idx],k=kinetics(P);
+  $("#bigtemp").innerHTML=(ph.t===null?P.ta:ph.t).toFixed(1)+'<span> °C</span>';
+  $("#phasename").textContent=ph.label;
+  $("#cyc-now").textContent=cycle;
+  Array.prototype.forEach.call(document.querySelectorAll("#steps .step"),function(el){
+    el.classList.toggle("on",el.getAttribute("data-k")===ph.k);
+  });
+  mol.classList.remove("closed","show-primer","extending","no-bind");
+  var cap=ph.cap;
+  if(k.rs.factor===0&&ph.k!=="denature"){
+    mol.classList.add("show-primer","no-bind");
+    cap=k.rs.reason;
+    $("#caption").textContent=cap;return;
+  }
+  if(ph.k==="anneal"){
+    mol.classList.add("show-primer");
+    if(k.binding<.35){mol.classList.add("no-bind");
+      cap="At "+P.ta+" °C the primers bounce off again before the polymerase can use them. Almost nothing gets copied this cycle.";}
+    else if(k.mispriming>.25){cap="At "+P.ta+" °C the primers bind — but they tolerate mismatches, so some land on the wrong sequence.";}
+    else{cap="At "+P.ta+" °C each primer finds the sequence it matches and holds on. This marks where copying will start.";}
+  }
+  if(ph.k==="extend"){
+    mol.classList.add("show-primer");
+    if(k.binding>=.35)mol.classList.add("extending");
+    if(k.extF<.9)cap="72 °C. The extension time is short for a "+P.amp+" bp product, so many new strands stop before they reach the end.";
+  }
+  $("#caption").textContent=cap;
+}
+function setIdle(){
+  var mol=$("#mol");
+  mol.classList.add("closed");mol.classList.remove("show-primer","extending","no-bind");
+  $("#bigtemp").innerHTML='25.0<span> °C</span>';
+  $("#phasename").textContent="Ready";
+  $("#cyc-now").textContent="0";
+  Array.prototype.forEach.call(document.querySelectorAll("#steps .step"),function(el){el.classList.remove("on")});
+  $("#caption").textContent="Two strands of DNA, wound together. Press Run reaction to start cycling.";
+}
+
+/* ================= run ================= */
+function stopAnim(){if(anim){clearTimeout(anim);anim=null}$("#run").textContent="Run reaction"}
+function verdictText(){
+  var map={
+    clean:["good","One clean band.","The reaction produced "+sci(result.duplex)+" copies of the "+P.amp+" bp target — "+fmtNg(result.ngYield)+" at "+((1-result.artefact)*100).toFixed(1)+" % purity."],
+    extra:["warn","Extra bands.","The target is there, but "+Math.round(result.artefact*100)+" % of what is in the tube is something else. Raise the annealing temperature."],
+    none:["bad","Empty lane.","The target reached "+fmtNg(result.ngYield)+", below the roughly 1 ng a stained gel can show. "+
+      (result.k.rs.factor===0?result.k.rs.reason
+       :result.k.rs.noTemplate?"That is what a clean no-template control looks like — but check the gel for a dimer band."
+       :result.k.binding<.5?"The annealing temperature is too close to the primer Tm."
+       :result.k.extF<.9?"The extension step is too short for this amplicon."
+       :"Try more cycles or more starting template.")]
+  };
+  var m=map[result.verdict],txt="<b>"+m[1]+"</b> "+m[2];
+  if(prediction){
+    txt+=prediction===result.verdict?" Your prediction was right."
+      :" You predicted "+({clean:"one clean band",extra:"extra bands",none:"an empty lane"})[prediction]+".";
+  }
+  var box=$("#advice");box.className="advice "+m[0];box.innerHTML=txt;
+}
+function runAll(){
+  if(anim){stopAnim();return}
+  readControls();result=simulate(P);shownCycle=0;drawGel(false);
+  $("#run").textContent="Stop";
+  var c=1,phase=0;
+  var tick=function(){
+    setPhase(phase,c);
+    if(phase===2){shownCycle=c;drawChart(shownCycle)}
+    phase++;
+    if(phase>2){phase=0;c++}
+    if(c>P.cycles){
+      anim=setTimeout(function(){
+        anim=null;$("#run").textContent="Run reaction";
+        setIdle();drawChart(P.cycles);drawGel(true);drawTiles();verdictText();
+      },380);return;
+    }
+    anim=setTimeout(tick,c<4?520:Math.max(70,420-c*12));
+  };
+  anim=setTimeout(tick,120);
+}
+function stepOne(){
+  stopAnim();readControls();
+  if(!result||shownCycle>=P.cycles){result=simulate(P);shownCycle=0}
+  shownCycle++;
+  var i=0;
+  var seq=function(){
+    setPhase(i,shownCycle);i++;
+    if(i<3)setTimeout(seq,620);
+    else setTimeout(function(){
+      drawChart(shownCycle);drawTiles();
+      if(shownCycle>=P.cycles){drawGel(true);verdictText();setIdle()}
+    },620);
+  };
+  seq();
+}
+function resetRun(){
+  stopAnim();result=null;shownCycle=0;prediction=null;
+  Array.prototype.forEach.call(document.querySelectorAll(".pbtn"),function(b){b.setAttribute("aria-pressed","false")});
+  setIdle();drawChart(0);drawGel(false);drawTiles();advice();
+}
+["ta","cycles","copies","ext","amp"].forEach(function(id){
+  els[id].addEventListener("input",function(){
+    stopAnim();readControls();syncLabels();advice();
+    result=null;shownCycle=0;setIdle();drawChart(0);drawGel(false);drawTiles();
+  });
+});
+$("#pol-taq").addEventListener("click",function(){P.pol="taq";this.setAttribute("aria-pressed","true");
+  $("#pol-hifi").setAttribute("aria-pressed","false");syncLabels();if(result){result=simulate(P);drawTiles()}});
+$("#pol-hifi").addEventListener("click",function(){P.pol="hifi";this.setAttribute("aria-pressed","true");
+  $("#pol-taq").setAttribute("aria-pressed","false");syncLabels();if(result){result=simulate(P);drawTiles()}});
+Array.prototype.forEach.call(document.querySelectorAll(".pbtn"),function(b){
+  b.addEventListener("click",function(){
+    var v=b.getAttribute("data-p");
+    prediction=(prediction===v)?null:v;
+    Array.prototype.forEach.call(document.querySelectorAll(".pbtn"),function(o){
+      o.setAttribute("aria-pressed",o.getAttribute("data-p")===prediction?"true":"false");
+    });
+  });
+});
+$("#run").addEventListener("click",runAll);
+$("#step").addEventListener("click",stepOne);
+$("#reset").addEventListener("click",resetRun);
+
+/* ================= question bank ================= */
+var BANK=[
+ {t:"Basics",q:"What actually happens to the DNA at 95 °C?",
+  o:["The hydrogen bonds between the two strands break and the strands separate","The covalent backbone of each strand is cut","The polymerase binds to the template","The primers are destroyed"],a:0,
+  e:"Only the hydrogen bonds between base pairs break. The sugar-phosphate backbone of each strand is covalent and survives the whole run — which is why the same template can be copied 30 times."},
+ {t:"Basics",q:"Why does the fixed-length product first appear in cycle 3 and not cycle 1?",
+  o:["The polymerase needs two cycles to warm up","A fragment with both ends defined requires copying a product that is already primer-defined at one end","The primers only bind after the template has been heated twice","dNTPs are not available until cycle 3"],a:1,
+  e:"In cycle 1 the polymerase runs off the end of the template, giving a product with one defined end and one ragged end. Only when one of those is itself copied from the opposite primer do you get a fragment fixed at both ends."},
+ {t:"Basics",q:"Which component determines where copying starts?",
+  o:["The polymerase","The dNTPs","The primers","The magnesium concentration"],a:2,
+  e:"Taq cannot start a strand from nothing. It can only extend an existing 3' end, so the primers decide both where copying begins and, between them, how long the product is."},
+ {t:"Reagents",q:"You leave MgCl₂ out of the reaction. What happens?",
+  o:["Nothing — magnesium is optional","The product is shorter than expected","No amplification at all, because Taq needs Mg²⁺ to function","Only the primer dimers disappear"],a:2,
+  e:"Taq polymerase is a metalloenzyme: magnesium ions sit in its active site and are required for it to join nucleotides together. No magnesium, no reaction — which is why MgCl₂ concentration is one of the first things people optimise."},
+ {t:"Reagents",q:"You add the forward primer but forget the reverse primer. What do you see on the gel?",
+  o:["A band at half the expected size","No band, because copying runs in one direction and never produces a fixed-length fragment","The normal band, at lower intensity","A smear"],a:1,
+  e:"With one primer the polymerase copies linearly — each cycle adds one copy per template rather than doubling, and nothing ever gets a defined second end. You need both primers to get exponential growth and a band."},
+ {t:"Reagents",q:"What is the water in a PCR reaction actually for?",
+  o:["It cools the reaction between cycles","It brings the reaction to its final volume so every other component sits at the right concentration","It dissolves the polymerase","It prevents evaporation"],a:1,
+  e:"Every concentration in the protocol — primer, dNTP, magnesium, buffer — is defined relative to the final volume. The water is what makes those numbers true, which is why it is added last and 'to volume'."},
+ {t:"Temperature",q:"Your primers have Tm values of 61 °C and 63 °C. What is the best starting annealing temperature?",
+  o:["52 °C","56 °C","64 °C","70 °C"],a:1,
+  e:"The rule of thumb is about 5 °C below the lower of the two Tm values: 61 − 5 = 56 °C. Going lower invites mispriming; going above 61 °C starts to lose binding altogether."},
+ {t:"Temperature",q:"You run a reaction at 70 °C with primers whose Tm is 60 °C. What do you expect on the gel?",
+  o:["One sharp band","Several extra bands","An empty lane","A smear across the whole lane"],a:2,
+  e:"Above the primer Tm the primers do not stay bound long enough to be extended. Nothing amplifies, so the lane is empty — a confusing result, because every reagent was present and the machine worked."},
+ {t:"Temperature",q:"Lowering the annealing temperature 10 °C below the recommended value usually causes what?",
+  o:["Higher yield of the correct product only","Primers binding to near-matching sites, giving extra bands","The polymerase to denature","The amplicon to get longer"],a:1,
+  e:"Lower temperature makes primer binding more tolerant of mismatches. The primers stick to sequences that are merely similar, and those get amplified too."},
+ {t:"Temperature",q:"Why is 72 °C used for the extension step?",
+  o:["It is the temperature at which DNA melts","It is close to the optimum working temperature of Taq polymerase","It is the Tm of a typical primer","It prevents primer dimers from forming"],a:1,
+  e:"Taq came from Thermus aquaticus, a bacterium from hot springs. Its enzyme works fastest around 72 °C, which conveniently sits above most primer Tm values and below the denaturing temperature."},
+ {t:"Kinetics",q:"Starting from 1,000 template copies with perfect doubling, roughly how many copies exist after 20 cycles?",
+  o:["About 20,000","About 2 × 10⁶","About 1 × 10⁹","About 1 × 10¹⁵"],a:2,
+  e:"1,000 × 2²⁰ ≈ 1 × 10⁹. Doubling is brutal: twenty cycles turns a thousand molecules into a billion, which is why PCR can work from vanishingly small samples."},
+ {t:"Kinetics",q:"Why does the amplification curve flatten out in the late cycles?",
+  o:["The DNA becomes too heavy to move","Primers and dNTPs run out, and product strands start reannealing to each other","The polymerase switches off at a fixed cycle number","The template is fully consumed"],a:1,
+  e:"The plateau comes from reagent depletion, polymerase saturation, and product strands finding each other faster than they find a primer. Efficiency drops toward zero, so the curve levels off."},
+ {t:"Kinetics",q:"In qPCR, why is the Ct value used instead of the amount of product at the end?",
+  o:["Ct is easier to measure with a camera","End-point amounts converge at the plateau regardless of starting amount","Ct is unaffected by the annealing temperature","The final product degrades before it can be measured"],a:1,
+  e:"By the plateau, a sample that started with ten copies and one that started with a million end up with nearly the same amount. The cycle at which the signal crosses the threshold still reflects the starting quantity, so that is what gets measured."},
+ {t:"Kinetics",q:"A reaction starts from just 5 template copies. What is the main consequence?",
+  o:["The product will be longer than expected","The result becomes unreliable, because the early cycles are chance events","The annealing temperature must be raised","No amplification is possible below 100 copies"],a:1,
+  e:"With a handful of molecules, whether any given one gets copied in an early cycle is genuinely random. This is allele dropout — the reason low-template forensic and single-cell PCR needs replicates."},
+ {t:"Troubleshooting",q:"A band appears in your no-template control lane. What does it mean?",
+  o:["The reaction worked especially well","Your reagents or workspace are contaminated and the real lane cannot be trusted","The ladder was loaded in the wrong lane","The annealing temperature was too high"],a:1,
+  e:"The NTC contains water instead of DNA, so any band means template got in where it should not have. The band in your real lane may be contamination too, so the whole run has to be repeated."},
+ {t:"Troubleshooting",q:"You see a fuzzy band at about 45 bp, well below your 400 bp target. What is it most likely to be?",
+  o:["Degraded template","Primer dimers","The ladder bleeding across","Partially extended product"],a:1,
+  e:"Primer dimers form when the two primers base-pair with each other and get extended. They are short, they amplify efficiently, and they eat the reagents your real product needed."},
+ {t:"Troubleshooting",q:"Your 2 kb product gives a faint band while a 300 bp control works fine. What should you change first?",
+  o:["Lower the annealing temperature by 10 °C","Lengthen the extension time","Reduce the number of cycles","Use less template"],a:1,
+  e:"Taq adds roughly 1,000 bases per minute. A 2 kb product needs about two minutes of extension; if the step is set to 30 seconds, most strands never reach the end and the full-length band stays faint."},
+ {t:"Troubleshooting",q:"Why might you choose a high-fidelity polymerase over Taq?",
+  o:["It is faster","It works at lower annealing temperatures","It makes far fewer copying errors, which matters if you will clone or sequence the product","It does not need primers"],a:2,
+  e:"Taq makes roughly one error per 10⁵ bases copied, and those errors accumulate across cycles. If the product is going to be sequenced or cloned, a proofreading enzyme with a rate nearer 10⁻⁷ is worth the cost."},
+ {t:"Troubleshooting",q:"Running 45 cycles instead of 30 mostly achieves what?",
+  o:["Fifteen more doublings of product","More non-specific product and more accumulated errors, with little extra target","A longer amplicon","A lower Ct value"],a:1,
+  e:"The reaction has already plateaued by about cycle 32. Extra cycles do not add meaningful target; they give artefacts and polymerase errors more time to accumulate."},
+ {t:"Troubleshooting",q:"Your reaction made ten million copies of the target, but the gel lane looks empty. Why?",
+  o:["The gel was run backwards","Ten million copies of a short fragment is well under the ~1 ng a stained gel can show","The product degraded during electrophoresis","Ten million copies is impossible"],a:1,
+  e:"Ten million copies of a 400 bp fragment is about four femtograms of DNA. Gel stains need roughly a nanogram per band. Amplification happening and amplification being visible are two different thresholds."}
+];
+var TOPICS=["All","Basics","Reagents","Temperature","Kinetics","Troubleshooting"];
+var quiz={topic:"All",list:[],i:0,score:0,answered:false,done:false};
+function shuffle(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+function startQuiz(){
+  var pool=quiz.topic==="All"?BANK:BANK.filter(function(q){return q.t===quiz.topic});
+  quiz.list=shuffle(pool);quiz.i=0;quiz.score=0;quiz.answered=false;quiz.done=false;renderQuiz();
+}
+function best(v){
+  try{
+    if(v===undefined)return localStorage.getItem("pcrbench-best");
+    localStorage.setItem("pcrbench-best",v);
+  }catch(e){}
+  return null;
+}
+function renderChips(){
+  $("#chips").innerHTML=TOPICS.map(function(t){
+    return '<button class="chip" data-t="'+t+'" aria-pressed="'+(t===quiz.topic)+'">'+t+'</button>';
+  }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll("#chips .chip"),function(b){
+    b.addEventListener("click",function(){quiz.topic=b.getAttribute("data-t");renderChips();startQuiz()});
+  });
+}
+function renderQuiz(){
+  var host=$("#qhost"),total=quiz.list.length;
+  $("#qscore").textContent="Score "+quiz.score+" / "+total;
+  if(quiz.done){
+    $("#qcount").textContent="Finished";$("#qprog").style.width="100%";
+    var pct=total?Math.round(quiz.score/total*100):0;
+    var msg=pct>=90?"You could run this reaction.":pct>=70?"Solid. Re-read the ones you missed.":pct>=45?"The Learn tab covers most of what tripped you up.":"Work through the Learn tab, then come back.";
+    var prev=best();best(String(Math.max(pct,prev?+prev:0)));
+    host.innerHTML='<div class="card scorecard"><div class="eyebrow">Result</div><div class="big">'+pct+'%</div>'+
+      '<p>'+quiz.score+' of '+total+' correct. '+msg+'</p>'+
+      '<div class="btnrow" style="justify-content:center;max-width:300px;margin:16px auto 0">'+
+      '<button class="btn primary grow" id="again">Try again</button></div></div>';
+    $("#again").addEventListener("click",startQuiz);return;
+  }
+  var q=quiz.list[quiz.i],letters=["A","B","C","D"];
+  $("#qcount").textContent="Question "+(quiz.i+1)+" of "+total;
+  $("#qprog").style.width=(quiz.i/total*100)+"%";
+  host.innerHTML='<div class="card qcard"><span class="qtopic">'+q.t+'</span>'+
+    '<div class="qtext">'+esc(q.q)+'</div><div class="opts" id="opts">'+
+    q.o.map(function(o,i){return '<button class="opt" data-i="'+i+'"><span class="k">'+letters[i]+'</span><span>'+esc(o)+'</span></button>'}).join("")+
+    '</div><div id="fbhost"></div></div>';
+  Array.prototype.forEach.call(document.querySelectorAll("#opts .opt"),function(b){
+    b.addEventListener("click",function(){answer(+b.getAttribute("data-i"))});
+  });
+}
+function answer(pick){
+  if(quiz.answered)return;
+  quiz.answered=true;
+  var q=quiz.list[quiz.i],ok=pick===q.a;
+  if(ok)quiz.score++;
+  Array.prototype.forEach.call(document.querySelectorAll("#opts .opt"),function(b){
+    var i=+b.getAttribute("data-i");b.disabled=true;
+    if(i===q.a)b.classList.add("correct");else if(i===pick)b.classList.add("wrong");
+  });
+  $("#qscore").textContent="Score "+quiz.score+" / "+quiz.list.length;
+  var last=quiz.i>=quiz.list.length-1;
+  $("#fbhost").innerHTML='<div class="fb '+(ok?"ok":"no")+'"><b>'+(ok?"Correct":"Not quite")+'</b>'+esc(q.e)+'</div>'+
+    '<div class="btnrow"><button class="btn primary" id="next">'+(last?"See result":"Next question")+'</button></div>';
+  $("#next").addEventListener("click",function(){
+    quiz.answered=false;
+    if(last)quiz.done=true;else quiz.i++;
+    renderQuiz();
+  });
+}
+
+/* ================= theme ================= */
+var MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+var SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>';
+var theme="light";
+function applyTheme(t){
+  document.documentElement.setAttribute("data-theme",t);
+  var b=$("#themebtn");
+  b.innerHTML=(t==="dark")?SUN:MOON;
+  b.setAttribute("aria-label",(t==="dark")?"Switch to light theme":"Switch to dark theme");
+}
+try{var _st=localStorage.getItem("pcrbench-theme");if(_st==="dark"||_st==="light")theme=_st}catch(e){}
+applyTheme(theme);
+$("#themebtn").addEventListener("click",function(){
+  theme=(theme==="dark")?"light":"dark";
+  try{localStorage.setItem("pcrbench-theme",theme)}catch(e){}
+  applyTheme(theme);
+});
+
+/* ================= lesson diagrams ================= */
+function TX(x,y,s,o){o=o||{};
+  return '<text x="'+x+'" y="'+y+'" font-size="'+(o.sz||11)+'"'+
+    (o.anchor?' text-anchor="'+o.anchor+'"':'')+(o.fill?' fill="'+o.fill+'"':'')+
+    (o.w?' font-weight="'+o.w+'"':'')+(o.m?' class="m"':'')+'>'+s+'</text>';}
+function RC(x,y,w,h,f,r,op){
+  return '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="'+(r===undefined?0:r)+'" fill="'+f+'"'+
+    (op!==undefined?' opacity="'+op+'"':'')+'/>';}
+function AR(x1,y,x2,c){
+  var d=x2>x1?1:-1;
+  return '<line x1="'+x1+'" y1="'+y+'" x2="'+(x2-d*7)+'" y2="'+y+'" stroke="'+c+'" stroke-width="2.4" stroke-linecap="round"/>'+
+    '<path d="M'+x2+' '+y+'L'+(x2-d*9)+' '+(y-5.5)+'L'+(x2-d*9)+' '+(y+5.5)+'Z" fill="'+c+'"/>';}
+function dia(vb,label,inner){return '<svg class="dia" viewBox="'+vb+'" role="img" aria-label="'+label+'">'+inner+'</svg>'}
+
+function dSetup(){
+  var segs=[["Nuclease-free water",16.25,"#8CC4D4"],["10× PCR buffer",2.5,"#B3AC9E"],
+            ["Template DNA",2.0,"#7FA8CC"],["MgCl₂",1.5,"#A796D4"],
+            ["Forward primer",1.0,"#DB9A38"],["Reverse primer",1.0,"#DB9A38"],
+            ["dNTP mix",0.5,"#72C2A0"],["Taq polymerase",0.25,"#C9819A"]];
+  var X=24,Y=52,W=592,H=46,x=X,s="";
+  s+='<defs><clipPath id="barclip"><rect x="'+X+'" y="'+Y+'" width="'+W+'" height="'+H+'" rx="8"/></clipPath></defs>';
+  s+='<g clip-path="url(#barclip)">';
+  segs.forEach(function(g){var w=g[1]/25*W;s+=RC(x,Y,w+0.6,H,g[2],0,.9);x+=w});
+  s+='</g>';
+  s+='<rect x="'+X+'" y="'+Y+'" width="'+W+'" height="'+H+'" rx="8" fill="none" stroke="var(--line)"/>';
+  s+=TX(X,38,"One 25 µL reaction, by volume",{sz:12.5,w:600,fill:"var(--ink)"});
+  s+=TX(X+W,38,"water is 65 % of it",{sz:11,anchor:"end",fill:"var(--ink-3)"});
+  segs.forEach(function(g,i){
+    var cx=X+(i%4)*150,cy=132+Math.floor(i/4)*42;
+    s+=RC(cx,cy-9,10,10,g[2],2);
+    s+=TX(cx+17,cy,g[0],{sz:11.5,fill:"var(--ink)"});
+    s+=TX(cx+17,cy+15,g[1].toFixed(2)+" µL",{sz:10.5,m:true,fill:"var(--ink-3)"});
+  });
+  return dia("0 0 640 200","Stacked bar showing how much of each component goes into a 25 microlitre reaction",s);
+}
+function dDenature(){
+  var s="",g="var(--ink-3)",acc="var(--accent)",i;
+  s+=TX(24,44,"Double-stranded template",{sz:11.5,fill:"var(--ink-2)"});
+  s+=RC(24,70,196,11,g,5.5,.55);
+  s+=RC(24,108,196,11,g,5.5,.55);
+  for(i=0;i<10;i++){var rx=36+i*19;
+    s+='<line x1="'+rx+'" y1="81" x2="'+rx+'" y2="108" stroke="'+acc+'" stroke-width="2" opacity=".45"/>';}
+  s+=TX(24,140,"hydrogen bonds hold the pair",{sz:10.5,fill:"var(--ink-3)"});
+  s+=AR(258,94,348,"var(--bad)");
+  s+=TX(303,78,"95 °C",{sz:14,anchor:"middle",w:700,fill:"var(--bad)"});
+  s+=TX(303,118,"3 min, then 30 s",{sz:10.5,anchor:"middle",m:true,fill:"var(--ink-3)"});
+  s+=RC(386,52,230,11,g,5.5,.55);
+  s+=RC(386,126,230,11,g,5.5,.55);
+  for(i=0;i<11;i++){var qx=398+i*20;
+    s+='<line x1="'+qx+'" y1="63" x2="'+qx+'" y2="71" stroke="'+acc+'" stroke-width="2" opacity=".3"/>';
+    s+='<line x1="'+qx+'" y1="118" x2="'+qx+'" y2="126" stroke="'+acc+'" stroke-width="2" opacity=".3"/>';}
+  s+=TX(386,44,"strand 1",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(386,158,"strand 2",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(24,184,"Two single strands. The backbone along each one is covalent — heat does not touch it.",{sz:11.5,fill:"var(--ink-2)"});
+  return dia("0 0 640 198","A DNA double helix separating into two single strands at 95 degrees",s);
+}
+function dAnneal(){
+  var s="",g="var(--ink-3)",w="var(--warn)",gr="var(--good)",i,x;
+  s+=TX(24,80,"Template",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(24,94,"strand 1",{sz:11,fill:"var(--ink-3)"});
+  s+=RC(140,72,440,11,g,5.5,.5);
+  s+=RC(480,88,100,10,w,5);
+  for(i=0;i<6;i++){x=490+i*16;s+='<line x1="'+x+'" y1="83" x2="'+x+'" y2="88" stroke="'+w+'" stroke-width="2"/>';}
+  s+=TX(580,113,"Reverse primer",{sz:11,anchor:"end",w:600,fill:w});
+  s+=AR(474,118,364,gr);
+  s+=TX(419,110,"Taq will extend this way",{sz:10.5,anchor:"middle",fill:gr});
+  s+='<line x1="140" y1="142" x2="580" y2="142" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="5 6"/>';
+  s+=RC(228,133,264,18,"var(--bg)",4);
+  s+=TX(360,146,"strands still apart from the 95 °C step",{sz:10.5,anchor:"middle",fill:"var(--ink-3)"});
+  s+=TX(140,162,"Forward primer",{sz:11,w:600,fill:w});
+  s+=RC(140,170,100,10,w,5);
+  for(i=0;i<6;i++){x=150+i*16;s+='<line x1="'+x+'" y1="180" x2="'+x+'" y2="185" stroke="'+w+'" stroke-width="2"/>';}
+  s+=RC(140,185,440,11,g,5.5,.5);
+  s+=TX(24,188,"Template",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(24,202,"strand 2",{sz:11,fill:"var(--ink-3)"});
+  s+=AR(246,214,356,gr);
+  s+=TX(301,232,"Taq will extend this way",{sz:10.5,anchor:"middle",fill:gr});
+  return dia("0 0 640 246","Primers bound at opposite ends of two separated DNA strands, with arrows showing which way copying runs",s);
+}
+function dExtend(){
+  var s="",g="var(--ink-3)",w="var(--warn)",a="var(--accent)";
+  s+=TX(24,80,"Template",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(24,94,"strand 1",{sz:11,fill:"var(--ink-3)"});
+  s+=RC(140,72,440,11,g,5.5,.5);
+  s+=RC(480,88,100,10,w,5);
+  s+=RC(394,88,88,10,a,5,.75);
+  s+='<rect x="352" y="80" width="46" height="26" rx="13" fill="'+a+'" opacity=".18" stroke="'+a+'" stroke-width="1.5"/>';
+  s+=TX(375,98,"Taq",{sz:10,anchor:"middle",w:600,fill:a});
+  [[330,68],[310,96],[294,76],[334,106]].forEach(function(p){
+    s+='<circle cx="'+p[0]+'" cy="'+p[1]+'" r="4" fill="var(--good)" opacity=".85"/>';});
+  s+=TX(300,54,"free dNTPs",{sz:10.5,anchor:"middle",fill:"var(--good)"});
+  s+=TX(580,120,"primer",{sz:10.5,anchor:"end",fill:w});
+  s+=TX(438,120,"new strand",{sz:10.5,anchor:"middle",fill:a});
+  s+='<line x1="140" y1="144" x2="580" y2="144" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="5 6"/>';
+  s+=RC(248,135,224,18,"var(--bg)",4);
+  s+=TX(360,148,"about 1,000 bases per minute",{sz:10.5,anchor:"middle",m:true,fill:"var(--ink-3)"});
+  s+=RC(140,172,100,10,w,5);
+  s+=RC(238,172,88,10,a,5,.75);
+  s+='<rect x="322" y="164" width="46" height="26" rx="13" fill="'+a+'" opacity=".18" stroke="'+a+'" stroke-width="1.5"/>';
+  s+=TX(345,182,"Taq",{sz:10,anchor:"middle",w:600,fill:a});
+  s+=RC(140,190,440,11,g,5.5,.5);
+  s+=TX(24,192,"Template",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(24,206,"strand 2",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(140,228,"Each template has become two. That is the doubling.",{sz:11.5,fill:"var(--ink-2)"});
+  return dia("0 0 640 240","Taq polymerase building a new strand outward from each primer",s);
+}
+function dRepeat(){
+  var s="",g="var(--ink-3)",w="var(--warn)",a="var(--accent)";
+  var cols=[196,340,484];
+  ["Cycle 1","Cycle 2","Cycle 3"].forEach(function(t,i){
+    s+=TX(cols[i],36,t,{sz:12.5,w:600,fill:"var(--ink)"});});
+  var rows=[["Original template","both ends ragged",[2,2,2],"orig"],
+            ["One end defined","the polymerase ran off the other",[2,4,6],"half"],
+            ["Both ends defined","this is the band you see",[0,0,2],"fixed"]];
+  rows.forEach(function(r,ri){
+    var y=78+ri*58;
+    s+=TX(24,y,r[0],{sz:12.5,w:600,fill:"var(--ink)"});
+    s+=TX(24,y+15,r[1],{sz:10.5,fill:"var(--ink-3)"});
+    cols.forEach(function(cx,ci){
+      var n=r[2][ci],iy=y-9;
+      if(ri===2&&ci===2)s+=RC(cx-11,iy-10,136,32,"var(--accent-soft)",7);
+      if(n===0){s+=TX(cx,y+3,"none yet",{sz:11,m:true,fill:"var(--ink-3)"});return}
+      if(r[3]==="orig")s+=RC(cx,iy,80,10,g,5,.45);
+      if(r[3]==="half"){s+=RC(cx,iy,80,10,g,5,.45);s+=RC(cx+62,iy,18,10,w,5)}
+      if(r[3]==="fixed"){s+=RC(cx,iy,80,10,a,5,.4);s+=RC(cx,iy,18,10,w,5);s+=RC(cx+62,iy,18,10,w,5)}
+      s+=TX(cx+90,y+3,"× "+n,{sz:11.5,m:true,w:600,fill:ri===2?a:"var(--ink-2)"});
+    });
+  });
+  s+='<line x1="24" y1="242" x2="616" y2="242" stroke="var(--line)" stroke-width="1"/>';
+  s+=TX(24,264,"From cycle 3 on, the fixed-length fragment doubles every cycle while the ragged ones only grow by two.",{sz:11.5,fill:"var(--ink-2)"});
+  return dia("0 0 640 278","Table showing how the three kinds of PCR product accumulate over the first three cycles",s);
+}
+function dRead(){
+  var s="",a="var(--accent)",L=44,R=400,T=42,B=186,i;
+  for(i=0;i<=3;i++){var y=T+(B-T)*i/3;
+    s+='<line x1="'+L+'" y1="'+y+'" x2="'+R+'" y2="'+y+'" stroke="var(--line)" stroke-width="1"/>';}
+  s+='<line x1="'+L+'" y1="'+B+'" x2="'+R+'" y2="'+B+'" stroke="var(--line)" stroke-width="1.5"/>';
+  s+='<line x1="'+L+'" y1="'+T+'" x2="'+L+'" y2="'+B+'" stroke="var(--line)" stroke-width="1.5"/>';
+  s+='<path d="M44 182C98 180 152 176 194 162C230 150 250 118 268 88C290 56 318 48 358 46C378 45 392 45 400 45" fill="none" stroke="'+a+'" stroke-width="2.6" stroke-linecap="round"/>';
+  s+='<line x1="'+L+'" y1="122" x2="'+R+'" y2="122" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="5 5"/>';
+  s+=TX(R,116,"detection threshold",{sz:10,anchor:"end",fill:"var(--warn)"});
+  s+='<line x1="250" y1="42" x2="250" y2="186" stroke="var(--good)" stroke-width="1.5" stroke-dasharray="3 4"/>';
+  s+='<circle cx="250" cy="122" r="4.5" fill="var(--good)"/>';
+  s+=TX(250,34,"Ct",{sz:11.5,anchor:"middle",w:600,m:true,fill:"var(--good)"});
+  s+=TX(120,204,"lag",{sz:10.5,anchor:"middle",fill:"var(--ink-3)"});
+  s+=TX(262,204,"exponential",{sz:10.5,anchor:"middle",fill:"var(--ink-3)"});
+  s+=TX(368,204,"plateau",{sz:10.5,anchor:"middle",fill:"var(--ink-3)"});
+  s+=TX(24,30,"Product, log scale",{sz:11,fill:"var(--ink-3)"});
+  s+=TX(L,226,"cycle number",{sz:10.5,m:true,fill:"var(--ink-3)"});
+  var GX=450;
+  s+=RC(GX,42,158,168,"var(--surface-2)",6);
+  s+=RC(GX+14,50,46,152,"var(--surface)",3,.5);
+  s+=RC(GX+78,50,54,152,"var(--surface)",3,.5);
+  s+=TX(GX+37,34,"Ladder",{sz:10,anchor:"middle",m:true,fill:"var(--ink-3)"});
+  s+=TX(GX+105,34,"Sample",{sz:10,anchor:"middle",m:true,fill:"var(--ink-3)"});
+  [62,80,98,120,144,172].forEach(function(y){s+=RC(GX+16,y,42,3,"var(--ink-2)",1.5,.45)});
+  s+=RC(GX+80,128,50,6,a,3,.9);
+  s+=TX(GX+105,120,"412 bp",{sz:10,anchor:"middle",m:true,w:600,fill:a});
+  s+=TX(GX,226,"One band, at the expected size.",{sz:10.5,fill:"var(--ink-3)"});
+  return dia("0 0 640 238","An amplification curve with lag, exponential and plateau phases, beside a gel showing a single band",s);
+}
+
+/* ================= lesson content ================= */
+var PROTO=[
+ ["Assemble 25 µL reaction","7 components",0],
+ ["Initial denaturation","95 °C · 3 min",1],
+ ["Denature","95 °C · 30 s",1],
+ ["Anneal","56 °C · 30 s",2],
+ ["Extend","72 °C · 45 s",3],
+ ["Repeat steps 3–5","× 30 cycles",4],
+ ["Final extension","72 °C · 5 min",4],
+ ["Run product on gel","1.5 % agarose",5]
+];
+var LESSON=[
+ {nav:"Set up",title:"Step 1 — Building the reaction",
+  lede:"Everything the reaction needs goes into one 25 µL tube before any heating starts.",
+  chips:["25 µL total","7 reagents"],dia:dSetup,
+  body:["A PCR reaction is mostly water, and that is not padding. Every concentration in the protocol — primer, dNTP, magnesium — is defined against the <b>final volume</b>, so the water is what makes all the other numbers true. It goes in first and the template goes in last.",
+        "The parts that do the work are tiny. A quarter of a microlitre of Taq polymerase is enough to build billions of strands, because an enzyme is a catalyst: it is not used up when it copies. The primers, by contrast, <b>are</b> consumed — every new strand starts with one — which is part of why the reaction eventually stops."],
+  why:"Most failed reactions are assembly mistakes, not machine faults. Leaving out magnesium, or pipetting one primer twice instead of both once, gives you an empty lane with nothing on the thermocycler to blame.",
+  check:{q:"Which one would stop the reaction completely if you left it out?",
+         o:["Nuclease-free water","MgCl₂","A second microlitre of buffer"],a:1,
+         e:"Taq is a metalloenzyme — magnesium ions sit in its active site, and without them it cannot join nucleotides at all. Leaving out water would throw the concentrations off, but something would still amplify."},
+  watch:[["Add Taq last","It is the most fragile and most expensive component. Keep it on ice until everything else is mixed."],
+         ["Make a master mix","For more than two tubes, mix everything except template once and split it. Pipetting 0.25 µL eight separate times is how errors get in."]]},
+
+ {nav:"Denature",title:"Step 2 — Denaturation",
+  lede:"At 95 °C the double helix comes apart into two single strands.",
+  chips:["95 °C","30 s"],dia:dDenature,
+  body:["The two strands of DNA are held together by hydrogen bonds between base pairs — weak individually, strong in their thousands. Heat breaks them. The sugar-phosphate backbone running along <b>each</b> strand is covalent and survives, which is why the same template can be copied thirty times without falling apart.",
+        "The first denaturation is longer, usually three minutes, because the genomic DNA you started with is long and tangled. Every cycle after that needs only thirty seconds, since by then most of what is being melted is short product rather than whole chromosomes."],
+  why:"If denaturation is incomplete the strands snap back together before a primer can reach them, and your yield drops for a reason that looks nothing like its cause. GC-rich templates need the most attention here — three hydrogen bonds per G–C pair instead of two means they hold on harder.",
+  check:{q:"What survives the 95 °C step completely intact?",
+         o:["The hydrogen bonds between the two strands","The covalent backbone of each single strand","The double helix"],a:1,
+         e:"Only the hydrogen bonds holding the two strands to each other break. Each strand's own backbone is covalent and unaffected, which is exactly what makes the template reusable cycle after cycle."},
+  watch:[["Too hot for too long","Taq loses about half its activity after roughly 30 minutes at 95 °C. Across 40 cycles, a long denaturation step adds up."],
+         ["Evaporation","Without a heated lid, water condenses on the cap and your 25 µL quietly becomes 20 — concentrating everything else."]]},
+
+ {nav:"Anneal",title:"Step 3 — Annealing",
+  lede:"The reaction cools, and the primers find the sequence they match.",
+  chips:["56 °C","30 s"],dia:dAnneal,
+  body:["At the annealing temperature the long strands are still apart. Two 3,000-base strands find each other far too slowly to re-pair in thirty seconds, while a 20-base primer, present in enormous excess, finds its match almost immediately. That difference in speed is what the whole step depends on.",
+        "Each primer marks one end of the region you want to copy. This is the real trick of PCR: you are not telling the polymerase <b>what</b> to copy, you are telling it <b>where to start</b>, twice, from opposite directions. Everything between the two primers gets amplified; everything outside them does not."],
+  why:"Annealing temperature is the single setting most likely to decide whether your PCR works. It comes from the melting temperature of your primers — usually about 5 °C below the lower of the two. Nothing else on the machine is as unforgiving.",
+  check:{q:"Your primers have Tm values of 61 °C and 63 °C. Best starting annealing temperature?",
+         o:["52 °C","56 °C","68 °C"],a:1,
+         e:"About 5 °C below the lower Tm: 61 − 5 = 56 °C. At 52 °C the primers start tolerating mismatches and you get extra bands; at 68 °C they barely bind at all and the lane comes up empty."},
+  watch:[["Too low","Primers tolerate mismatches and stick to near-matching sites. Extra bands on the gel."],
+         ["Too high","Primers do not stay bound long enough to be extended. Empty lane, perfect machine."],
+         ["Primer dimers","If the two primers pair with each other instead, you get a fuzzy band near 45 bp that eats your reagents."]]},
+
+ {nav:"Extend",title:"Step 4 — Extension",
+  lede:"Taq polymerase builds a new strand outward from each primer.",
+  chips:["72 °C","45 s"],dia:dExtend,
+  body:["Taq can only add bases to an existing 3' end — it cannot start a strand from nothing. That single limitation is the reason primers exist. From there it moves along the template reading each base and adding the one that pairs with it, at roughly <b>1,000 bases per minute</b>.",
+        "Set the extension time from the length of your product: a 400 bp target needs about 25 seconds, a 2 kb target about two minutes. Too short and most strands stop before reaching the end, giving a faint band for a reason that has nothing to do with your primers or your template."],
+  why:"72 °C is not arbitrary. Taq came from Thermus aquaticus, a bacterium living in hot springs, and its enzyme works fastest near that temperature — conveniently above most primer Tm values and below the denaturing step, so one enzyme survives the whole run.",
+  check:{q:"A 2 kb product gives a faint band while a 300 bp control is fine. What do you change first?",
+         o:["Lower the annealing temperature by 10 °C","Lengthen the extension time","Run fewer cycles"],a:1,
+         e:"Taq adds about 1,000 bases a minute, so 2 kb needs roughly two minutes. If the step is set to 30 seconds most strands never finish and the full-length band stays faint — while the short control, which finishes easily, looks perfect."},
+  watch:[["Fidelity costs speed","High-fidelity polymerases proofread, which makes them slower. Check the manufacturer's rate before reusing a Taq protocol."],
+         ["Final extension","A few minutes at 72 °C at the very end lets partially built strands finish, which tightens the band."]]},
+
+ {nav:"Repeat",title:"Step 5 — Repeating the cycle",
+  lede:"Thirty rounds of the same three temperatures, and the numbers run away.",
+  chips:["× 30 cycles"],dia:dRepeat,
+  body:["In cycle 1 the polymerase starts at each primer and runs until it falls off the end of the template. Those products have one defined end and one ragged one — they are not your band.",
+        "Only when a product that is <b>already</b> primer-defined at one end gets copied from the other primer does a fragment appear with both ends fixed. That first happens in cycle 3. From then on the fixed-length fragment doubles every cycle while the ragged ones only grow by two per cycle, so by cycle 30 the ragged products are a rounding error. That is why a gel shows one sharp band instead of a smear."],
+  why:"Exponential growth is what makes PCR extraordinary: 2³⁰ is about a billion, so thirty cycles turns a single molecule into enough DNA to see with a stain. It is also what makes contamination catastrophic — a billion-fold amplifier does not care whose DNA it got.",
+  check:{q:"Why does the fixed-length product first appear in cycle 3 rather than cycle 1?",
+         o:["The polymerase needs two cycles to reach full speed","It requires copying a product that is already primer-defined at one end","dNTPs are not available until cycle 3"],a:1,
+         e:"Cycle 1 produces strands with one defined end and one ragged end. A fragment fixed at both ends can only come from copying one of those from the opposite primer — which cannot happen until the cycle after they exist."},
+  watch:[["Contamination","A billion-fold amplifier does not distinguish your template from one that drifted in on a glove. Separate your pre- and post-PCR areas."],
+         ["Too many cycles","After the plateau, extra cycles add polymerase errors and artefacts, not product."]]},
+
+ {nav:"Read it",title:"Step 6 — Reading the result",
+  lede:"Where the curve flattens, what the gel shows, and what neither can tell you.",
+  chips:["1.5 % agarose"],dia:dRead,
+  body:["The curve has three parts. Early cycles sit below detection — product is doubling, but there is not yet enough to see. The middle is the exponential phase, a straight line on a log scale. Then the curve flattens as primers and dNTPs run out, the polymerase saturates, and product strands start finding each other instead of a primer.",
+        "This is why qPCR reads the <b>cycle at which the signal crosses a threshold</b> rather than the amount at the end. By the plateau, a sample that started with ten copies and one that started with a million look nearly identical.",
+        "A gel band also needs roughly <b>1 ng</b> of DNA to be visible at all. A reaction can make ten million copies and still show an empty lane — amplification happening and amplification being visible are two different thresholds."],
+  why:"The no-template control is the lane that matters most. If a band appears there, your reagents are contaminated and the band in your real lane means nothing, however convincing it looks.",
+  check:{q:"In qPCR, why is the Ct value used instead of how much product is there at the end?",
+         o:["Ct is easier to measure with a camera","End-point amounts converge at the plateau regardless of starting amount","Ct is unaffected by annealing temperature"],a:1,
+         e:"At the plateau every reaction ends up with about the same amount of DNA, so the final quantity tells you almost nothing about what you started with. The cycle at which the signal crossed the threshold still does."},
+  watch:[["Always run an NTC","The same reaction with water instead of template. It must come out empty."],
+         ["A band is not an identity","The right size is evidence, not proof. Sequencing is what confirms you amplified what you meant to."]]}
+];
+
+/* ================= lesson render ================= */
+var lesson={i:0,answered:{}};
+function renderLesson(){
+  var n=LESSON.length,cur=lesson.i,L=LESSON[cur];
+
+  var st="";
+  LESSON.forEach(function(s,i){
+    if(i)st+='<span class="lsep'+(i<=cur?" done":"")+'" aria-hidden="true"></span>';
+    st+='<button class="lstep '+(i===cur?"on":(i<cur?"done":""))+'" data-l="'+i+'">'+
+      '<span class="dot">'+(i<cur?"✓":(i+1))+'</span><span class="lb">'+esc(s.nav)+'</span></button>';
+  });
+  $("#lsteps").innerHTML=st;
+  Array.prototype.forEach.call(document.querySelectorAll("#lsteps .lstep"),function(b){
+    b.addEventListener("click",function(){lesson.i=+b.getAttribute("data-l");renderLesson()});
+  });
+
+  $("#lproto").innerHTML=PROTO.map(function(p){
+    var cls=p[2]===cur?"on":(p[2]<cur?"done":"");
+    return '<div class="prow '+cls+'"><b>'+(p[2]<cur?"✓":"")+'</b><span><span class="pn">'+esc(p[0])+
+      '</span><span class="ps">'+esc(p[1])+'</span></span></div>';
+  }).join("");
+
+  var m='<div class="lhead"><div><h2>'+esc(L.title)+'</h2><p class="lede">'+esc(L.lede)+'</p></div>'+
+    '<div class="lchips">'+L.chips.map(function(c){return '<span class="lchip">'+esc(c)+'</span>'}).join("")+'</div></div>'+
+    '<div class="diabox">'+L.dia()+'</div>'+
+    '<div class="lbody">'+L.body.map(function(p){return '<p>'+p+'</p>'}).join("")+'</div>'+
+    '<div class="lnav">'+
+      (cur>0?'<button class="btn" id="lprev">← '+esc(LESSON[cur-1].nav)+'</button>':'')+
+      (cur<n-1?'<button class="btn primary" id="lnext">'+esc(LESSON[cur+1].nav)+' →</button>'
+             :'<button class="btn primary" id="ltosim">Try it in the simulator →</button>')+
+      '<span class="count">'+(cur+1)+' of '+n+'</span></div>';
+  $("#lmain").innerHTML=m;
+  if(cur>0)$("#lprev").addEventListener("click",function(){lesson.i--;renderLesson();scrollTop()});
+  if(cur<n-1)$("#lnext").addEventListener("click",function(){lesson.i++;renderLesson();scrollTop()});
+  else $("#ltosim").addEventListener("click",function(){showTab("simulate");scrollTop()});
+
+  var picked=lesson.answered[cur];
+  var c=L.check;
+  var sup='<div class="card scard why"><h4>Why it matters</h4><p>'+esc(L.why)+'</p></div>'+
+    '<div class="card scard check"><h4>Check your understanding</h4><p>'+esc(c.q)+'</p><div class="copts" id="copts">'+
+    c.o.map(function(o,i){
+      var cls="copt";
+      if(picked!==undefined){if(i===c.a)cls+=" correct";else if(i===picked)cls+=" wrong"}
+      return '<button class="'+cls+'" data-c="'+i+'"'+(picked!==undefined?" disabled":"")+'><i></i><span>'+esc(o)+'</span></button>';
+    }).join("")+'</div>'+
+    (picked!==undefined?'<div class="cfb '+(picked===c.a?"ok":"no")+'">'+esc(c.e)+'</div>':'')+
+    '</div>'+
+    '<div class="card scard watch"><h4>Watch out for</h4><div class="wlist">'+
+    L.watch.map(function(wv){return '<div class="witem"><i></i><span><b>'+esc(wv[0])+'</b><span>'+esc(wv[1])+'</span></span></div>'}).join("")+
+    '</div></div>';
+  $("#lsupport").innerHTML=sup;
+  if(picked===undefined){
+    Array.prototype.forEach.call(document.querySelectorAll("#copts .copt"),function(b){
+      b.addEventListener("click",function(){lesson.answered[cur]=+b.getAttribute("data-c");renderLesson()});
+    });
+  }
+}
+function scrollTop(){try{window.scrollTo({top:0,behavior:"smooth"})}catch(e){window.scrollTo(0,0)}}
+
+/* ================= boot ================= */
+renderRail();renderLesson();
+renderShelf();
+autofill();                 /* open in a working state; Empty clears it */
+readControls();syncLabels();advice();
+setIdle();drawChart(0);drawGel(false);drawTiles();
+renderChips();startQuiz();
+showTab(location.hash.slice(1)||"simulate");
+})();
+</script>
+</body>
+</html>
